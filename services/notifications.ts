@@ -16,6 +16,8 @@ import {
 } from 'expo-notifications/build/NotificationChannelManager.types';
 
 import { Reminder } from '../types/reminder';
+import { loadSettingsFromStorage } from './storage';
+import { speakReminderText } from './tts';
 
 export const ANDROID_CHANNEL_ID = 'remind_alerts_v1';
 export const REMINDER_CATEGORY_ID = 'REMINDER_ACTION_CATEGORY';
@@ -179,10 +181,22 @@ export function registerNotificationListeners(
   onFinishTask: (reminderId: string) => void,
   onPostponeTask: (reminderId: string, minutes: number) => void
 ) {
-  // 1. Foreground notification received listener
+  // 1. Notification received listener - speaks reminder aloud if voice is enabled
   const receivedSubscription = addNotificationReceivedListener(async (notification) => {
-    // Rely on Android native system sound & vibration profiles.
-    // Never force unprompted audio TTS into silent/vibrate environments.
+    try {
+      const settings = await loadSettingsFromStorage();
+      if (settings.voiceReminderEnabled) {
+        const task =
+          notification.request.content.body ||
+          (notification.request.content.data?.task as string) ||
+          notification.request.content.title;
+        if (task) {
+          await speakReminderText(task);
+        }
+      }
+    } catch (err) {
+      console.warn('Voice reminder on receive error:', err);
+    }
   });
 
   // 2. When the user interacts with the notification or taps an action button
@@ -206,6 +220,21 @@ export function registerNotificationListeners(
       onPostponeTask(reminderId, 15);
     } else if (actionId === ACTION_IDENTIFIERS.POSTPONE_60) {
       onPostponeTask(reminderId, 60);
+    } else {
+      // User tapped the notification banner itself to open the app: speak task
+      try {
+        const settings = await loadSettingsFromStorage();
+        if (settings.voiceReminderEnabled) {
+          const task =
+            response.notification.request.content.body ||
+            (response.notification.request.content.data?.task as string);
+          if (task) {
+            await speakReminderText(task);
+          }
+        }
+      } catch (err) {
+        console.warn('Voice reminder on open error:', err);
+      }
     }
   });
 
