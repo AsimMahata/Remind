@@ -7,7 +7,7 @@ import {
   TouchableWithoutFeedback,
   StyleSheet,
 } from 'react-native';
-import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
+import { Ionicons } from '@expo/vector-icons';
 import { Colors, Typography } from '../constants/theme';
 import { useAppInsets } from '../hooks/useAppInsets';
 
@@ -17,6 +17,9 @@ interface MenuDropdownProps {
   onNavigateSettings: () => void;
   onClearCompleted: () => void;
   onTestVoice: () => void;
+  onEnterSelectMode?: () => void;
+  onDeleteOverdue?: () => void;
+  overdueCount?: number;
 }
 
 export const MenuDropdown: React.FC<MenuDropdownProps> = ({
@@ -25,6 +28,9 @@ export const MenuDropdown: React.FC<MenuDropdownProps> = ({
   onNavigateSettings,
   onClearCompleted,
   onTestVoice,
+  onEnterSelectMode,
+  onDeleteOverdue,
+  overdueCount = 0,
 }) => {
   const { topInset } = useAppInsets();
 
@@ -38,22 +44,66 @@ export const MenuDropdown: React.FC<MenuDropdownProps> = ({
       <TouchableWithoutFeedback onPress={onClose}>
         <View style={styles.overlay}>
           <View style={[styles.menuContainer, { top: topInset + 48 }]}>
+            {/* Multi-select option */}
+            {onEnterSelectMode && (
+              <TouchableOpacity
+                style={styles.menuItem}
+                onPress={() => {
+                  onClose();
+                  onEnterSelectMode();
+                }}
+              >
+                <Ionicons
+                  name="checkbox-outline"
+                  size={20}
+                  color={Colors.accentCyan}
+                  style={styles.menuIcon}
+                />
+                <Text style={styles.menuText}>Select Multiple</Text>
+              </TouchableOpacity>
+            )}
+
+            {/* Delete Overdue option */}
+            {onDeleteOverdue && (
+              <TouchableOpacity
+                style={styles.menuItem}
+                onPress={() => {
+                  onClose();
+                  onDeleteOverdue();
+                }}
+              >
+                <Ionicons
+                  name="alarm-outline"
+                  size={20}
+                  color={Colors.accentOverdue}
+                  style={styles.menuIcon}
+                />
+                <Text style={[styles.menuText, { color: Colors.accentOverdue }]}>
+                  Delete Overdue {overdueCount > 0 ? `(${overdueCount})` : ''}
+                </Text>
+              </TouchableOpacity>
+            )}
+
+            {/* Clear Completed */}
             <TouchableOpacity
               style={styles.menuItem}
               onPress={() => {
                 onClose();
-                onNavigateSettings();
+                onClearCompleted();
               }}
             >
               <Ionicons
-                name="settings-outline"
+                name="trash-outline"
                 size={20}
-                color={Colors.accentCyan}
+                color={Colors.textOverdue}
                 style={styles.menuIcon}
               />
-              <Text style={styles.menuText}>Settings</Text>
+              <Text style={styles.menuText}>Clear Completed</Text>
             </TouchableOpacity>
 
+            <View style={styles.divider} />
+
+            {/* Test Voice (TTS) */}
             <TouchableOpacity
               style={styles.menuItem}
               onPress={() => {
@@ -70,20 +120,21 @@ export const MenuDropdown: React.FC<MenuDropdownProps> = ({
               <Text style={styles.menuText}>Test Voice (TTS)</Text>
             </TouchableOpacity>
 
+            {/* Settings */}
             <TouchableOpacity
               style={styles.menuItem}
               onPress={() => {
                 onClose();
-                onClearCompleted();
+                onNavigateSettings();
               }}
             >
               <Ionicons
-                name="trash-outline"
+                name="settings-outline"
                 size={20}
-                color={Colors.accentOverdue}
+                color={Colors.accentCyan}
                 style={styles.menuIcon}
               />
-              <Text style={styles.menuText}>Clear Completed</Text>
+              <Text style={styles.menuText}>Settings</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -105,7 +156,7 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     borderWidth: 1,
     borderColor: Colors.modalBorder,
-    minWidth: 200,
+    minWidth: 210,
     elevation: 8,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
@@ -126,5 +177,10 @@ const styles = StyleSheet.create({
     fontSize: Typography.fontSizes.md,
     color: Colors.textPrimary,
     fontWeight: Typography.weights.medium,
+  },
+  divider: {
+    height: 1,
+    backgroundColor: Colors.modalBorder,
+    marginVertical: 4,
   },
 });

@@ -8,7 +8,7 @@ import {
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { Reminder } from '../types/reminder';
-import { Colors, Typography } from '../constants/theme';
+import { Colors } from '../constants/theme';
 import { formatReminderDateTime } from '../services/reminders';
 import { speakReminderText } from '../services/tts';
 
@@ -18,6 +18,11 @@ interface ReminderCardProps {
   onPostponePress: (reminder: Reminder) => void;
   onDeletePress: (id: string) => void;
   onPressCard?: (reminder: Reminder) => void;
+  // Multi-select props
+  isSelectionMode?: boolean;
+  isSelected?: boolean;
+  onToggleSelect?: (id: string) => void;
+  onLongPressCard?: (reminder: Reminder) => void;
 }
 
 export const ReminderCard: React.FC<ReminderCardProps> = ({
@@ -26,6 +31,10 @@ export const ReminderCard: React.FC<ReminderCardProps> = ({
   onPostponePress,
   onDeletePress,
   onPressCard,
+  isSelectionMode = false,
+  isSelected = false,
+  onToggleSelect,
+  onLongPressCard,
 }) => {
   const { formattedText, isOverdue } = formatReminderDateTime(reminder.dueAt);
 
@@ -51,40 +60,75 @@ export const ReminderCard: React.FC<ReminderCardProps> = ({
     onDeletePress(reminder.id);
   };
 
+  const handleCardPress = () => {
+    if (isSelectionMode) {
+      try {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      } catch {
+        // ignore
+      }
+      onToggleSelect?.(reminder.id);
+    } else {
+      onPressCard?.(reminder);
+    }
+  };
+
+  const handleLongPress = () => {
+    try {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    } catch {
+      // ignore
+    }
+    if (isSelectionMode) {
+      onToggleSelect?.(reminder.id);
+    } else {
+      onLongPressCard?.(reminder);
+    }
+  };
+
   return (
-    <View
+    <TouchableOpacity
+      activeOpacity={0.8}
+      onPress={handleCardPress}
+      onLongPress={handleLongPress}
+      delayLongPress={300}
       style={[
         styles.cardContainer,
         reminder.completed && styles.cardContainerCompleted,
+        isSelectionMode && isSelected && styles.cardContainerSelected,
       ]}
     >
-      {/* Checkbox */}
-      <TouchableOpacity
-        onPress={handleToggle}
-        style={styles.checkboxTouchable}
-        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-        accessibilityLabel={reminder.completed ? 'Mark uncompleted' : 'Mark completed'}
-      >
-        <View
-          style={[
-            styles.checkboxBox,
-            reminder.completed && styles.checkboxBoxChecked,
-          ]}
-        >
-          {reminder.completed && (
-            <Ionicons name="checkmark" size={16} color="#FFFFFF" />
-          )}
+      {/* Selection Mode Checkmark OR Standard Completion Checkbox */}
+      {isSelectionMode ? (
+        <View style={styles.selectionIndicator}>
+          <Ionicons
+            name={isSelected ? 'checkmark-circle' : 'ellipse-outline'}
+            size={24}
+            color={isSelected ? Colors.accentCyan : Colors.textSecondary}
+          />
         </View>
-      </TouchableOpacity>
+      ) : (
+        <TouchableOpacity
+          onPress={handleToggle}
+          style={styles.checkboxTouchable}
+          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          accessibilityLabel={reminder.completed ? 'Mark uncompleted' : 'Mark completed'}
+        >
+          <View
+            style={[
+              styles.checkboxBox,
+              reminder.completed && styles.checkboxBoxChecked,
+            ]}
+          >
+            {reminder.completed && (
+              <Ionicons name="checkmark" size={16} color="#FFFFFF" />
+            )}
+          </View>
+        </TouchableOpacity>
+      )}
 
-      {/* Task Content - Tap anywhere in the card body to Edit */}
-      <TouchableOpacity
-        style={styles.contentContainer}
-        onPress={() => onPressCard && onPressCard(reminder)}
-        activeOpacity={0.7}
-        accessibilityRole="button"
-        accessibilityLabel={`Reminder: ${reminder.task}. Tap to edit or manage.`}
-      >
+      {/* Task Content */}
+      <View style={styles.contentContainer}>
         <Text
           style={[
             styles.taskText,
@@ -106,53 +150,55 @@ export const ReminderCard: React.FC<ReminderCardProps> = ({
             {formattedText}
           </Text>
         </View>
-      </TouchableOpacity>
+      </View>
 
-      {/* Action Buttons */}
-      <View style={styles.actionsContainer}>
-        {/* Speak Button */}
-        {!reminder.completed && (
+      {/* Action Buttons (Hidden when in multi-select mode) */}
+      {!isSelectionMode && (
+        <View style={styles.actionsContainer}>
+          {/* Speak Button */}
+          {!reminder.completed && (
+            <TouchableOpacity
+              onPress={handleSpeak}
+              style={styles.actionBtn}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              accessibilityLabel="Speak reminder"
+            >
+              <Ionicons name="volume-medium-outline" size={20} color={Colors.accentCyan} />
+            </TouchableOpacity>
+          )}
+
+          {/* Postpone Button */}
+          {!reminder.completed && (
+            <TouchableOpacity
+              onPress={() => onPostponePress(reminder)}
+              style={styles.actionBtn}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              accessibilityLabel="Postpone reminder"
+            >
+              <MaterialCommunityIcons
+                name="clock-time-four-outline"
+                size={20}
+                color={Colors.accentUpcoming}
+              />
+            </TouchableOpacity>
+          )}
+
+          {/* Delete Button (Always readily available) */}
           <TouchableOpacity
-            onPress={handleSpeak}
+            onPress={handleDelete}
             style={styles.actionBtn}
             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-            accessibilityLabel="Speak reminder"
+            accessibilityLabel="Delete reminder"
           >
-            <Ionicons name="volume-medium-outline" size={20} color={Colors.accentCyan} />
-          </TouchableOpacity>
-        )}
-
-        {/* Postpone Button */}
-        {!reminder.completed && (
-          <TouchableOpacity
-            onPress={() => onPostponePress(reminder)}
-            style={styles.actionBtn}
-            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-            accessibilityLabel="Postpone reminder"
-          >
-            <MaterialCommunityIcons
-              name="clock-time-four-outline"
-              size={20}
-              color={Colors.accentUpcoming}
+            <Ionicons
+              name="trash-outline"
+              size={19}
+              color={Colors.textOverdue}
             />
           </TouchableOpacity>
-        )}
-
-        {/* Delete Button (Always readily available) */}
-        <TouchableOpacity
-          onPress={handleDelete}
-          style={styles.actionBtn}
-          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-          accessibilityLabel="Delete reminder"
-        >
-          <Ionicons
-            name="trash-outline"
-            size={19}
-            color={Colors.textOverdue}
-          />
-        </TouchableOpacity>
-      </View>
-    </View>
+        </View>
+      )}
+    </TouchableOpacity>
   );
 };
 
@@ -179,6 +225,16 @@ const styles = StyleSheet.create({
     borderColor: 'transparent',
     opacity: 0.7,
   },
+  cardContainerSelected: {
+    borderColor: Colors.accentCyan,
+    backgroundColor: 'rgba(0, 209, 255, 0.08)',
+  },
+  selectionIndicator: {
+    marginRight: 12,
+    padding: 2,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   checkboxTouchable: {
     marginRight: 12,
     padding: 2,
@@ -200,7 +256,6 @@ const styles = StyleSheet.create({
   contentContainer: {
     flex: 1,
     justifyContent: 'center',
-    alignSelf: 'stretch',
     paddingVertical: 2,
     paddingHorizontal: 2,
   },

@@ -9,6 +9,7 @@ import {
   getActiveReminders,
   upsertReminder,
   softDeleteReminder,
+  softDeleteMultipleReminders,
   getDeletedReminders,
   restoreReminderInDb,
   purgeDeletedRemindersFromDb,
@@ -399,6 +400,53 @@ export async function clearCompletedReminders(allReminders: Reminder[]): Promise
 
   triggerSync();
   return allReminders.filter((r) => !r.completed);
+}
+
+/**
+ * Soft delete multiple reminders at once (batch delete)
+ */
+export async function deleteMultipleReminders(
+  ids: string[],
+  allReminders: Reminder[]
+): Promise<Reminder[]> {
+  if (!ids || ids.length === 0) return allReminders;
+
+  const idSet = new Set(ids);
+  const toDelete = allReminders.filter((r) => idSet.has(r.id));
+
+  for (const r of toDelete) {
+    if (r.notificationId) {
+      await cancelReminderNotification(r.notificationId);
+    }
+  }
+
+  await softDeleteMultipleReminders(ids, true);
+  triggerSync();
+
+  return allReminders.filter((r) => !idSet.has(r.id));
+}
+
+/**
+ * Soft delete all overdue reminders
+ */
+export async function deleteOverdueReminders(allReminders: Reminder[]): Promise<Reminder[]> {
+  const now = Date.now();
+  const overdueItems = allReminders.filter((r) => !r.completed && r.dueAt < now);
+  const ids = overdueItems.map((r) => r.id);
+
+  if (ids.length === 0) return allReminders;
+
+  for (const r of overdueItems) {
+    if (r.notificationId) {
+      await cancelReminderNotification(r.notificationId);
+    }
+  }
+
+  await softDeleteMultipleReminders(ids, true);
+  triggerSync();
+
+  const idSet = new Set(ids);
+  return allReminders.filter((r) => !idSet.has(r.id));
 }
 
 /**

@@ -157,6 +157,51 @@ export async function softDeleteReminder(
 }
 
 /**
+ * Soft delete multiple reminders in SQLite at once
+ */
+export async function softDeleteMultipleReminders(
+  ids: string[],
+  shouldEnqueueSync: boolean = true
+): Promise<Reminder[]> {
+  if (!ids || ids.length === 0) return [];
+  const db = await getDatabase();
+  const now = Date.now();
+  const deletedReminders: Reminder[] = [];
+
+  for (const id of ids) {
+    const existing = await getReminderById(id);
+    if (!existing) continue;
+
+    const updated: Reminder = {
+      ...existing,
+      deleted: true,
+      deletedAt: now,
+      updatedAt: now,
+      version: (existing.version || 1) + 1,
+      syncStatus: 'pending',
+    };
+
+    await db.runAsync(
+      `UPDATE reminders SET
+        deleted = 1,
+        deletedAt = ?,
+        updatedAt = ?,
+        version = version + 1,
+        syncStatus = 'pending'
+      WHERE id = ?`,
+      [now, now, id]
+    );
+
+    if (shouldEnqueueSync) {
+      await enqueueSyncOperation('delete', updated);
+    }
+    deletedReminders.push(updated);
+  }
+
+  return deletedReminders;
+}
+
+/**
  * Enqueue an operation into the sync_queue outbox
  */
 export async function enqueueSyncOperation(

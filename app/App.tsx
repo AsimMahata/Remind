@@ -23,6 +23,8 @@ import {
   toggleReminderCompletion,
   postponeReminder,
   deleteReminder,
+  deleteMultipleReminders,
+  deleteOverdueReminders,
   clearCompletedReminders,
   updateReminder,
   loadActiveRemindersFromDb,
@@ -256,6 +258,20 @@ export default function App() {
     setEditingReminder((prev) => (prev?.id === id ? null : prev));
   }, [reminders]);
 
+  const handleDeleteMultipleReminders = useCallback(
+    async (ids: string[]) => {
+      const updated = await deleteMultipleReminders(ids, reminders);
+      setReminders(updated);
+      setEditingReminder((prev) => (prev && ids.includes(prev.id) ? null : prev));
+    },
+    [reminders]
+  );
+
+  const handleDeleteOverdueReminders = useCallback(async () => {
+    const updated = await deleteOverdueReminders(reminders);
+    setReminders(updated);
+  }, [reminders]);
+
   const handlePostponeReminder = useCallback(
     async (id: string, minutesOrTimestamp: number, isAbsolute: boolean) => {
       const updated = await postponeReminder(
@@ -355,6 +371,8 @@ export default function App() {
             reminders={reminders}
             onToggleComplete={handleToggleComplete}
             onDeleteReminder={handleDeleteReminder}
+            onDeleteMultiple={handleDeleteMultipleReminders}
+            onDeleteOverdue={handleDeleteOverdueReminders}
             onPostponeReminder={handlePostponeReminder}
             onAddQuickReminder={handleQuickAddReminder}
             onNavigateAdd={() => navigateTo('ADD_REMINDER')}

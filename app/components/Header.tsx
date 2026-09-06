@@ -5,7 +5,6 @@ import {
   StyleSheet,
   TouchableOpacity,
   StatusBar,
-  Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Typography } from '../constants/theme';
@@ -21,6 +20,13 @@ interface HeaderProps {
   onMenuPress?: () => void;
   isSearchActive?: boolean;
   rightElement?: React.ReactNode;
+  // Multi-select mode props
+  isSelectionMode?: boolean;
+  selectedCount?: number;
+  onCloseSelection?: () => void;
+  onSelectAll?: () => void;
+  isAllSelected?: boolean;
+  onDeleteSelected?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -32,8 +38,71 @@ export const Header: React.FC<HeaderProps> = ({
   showMenu = true,
   onMenuPress,
   rightElement,
+  isSelectionMode = false,
+  selectedCount = 0,
+  onCloseSelection,
+  onSelectAll,
+  isAllSelected = false,
+  onDeleteSelected,
 }) => {
   const { topInset } = useAppInsets();
+
+  if (isSelectionMode) {
+    return (
+      <View style={[styles.headerContainer, styles.selectionHeaderContainer, { paddingTop: topInset + 8 }]}>
+        <StatusBar barStyle="light-content" translucent={true} backgroundColor="transparent" />
+        <View style={styles.headerContent}>
+          {/* Left: Close selection mode */}
+          <View style={styles.leftContainer}>
+            <TouchableOpacity
+              onPress={onCloseSelection}
+              style={styles.iconButton}
+              accessibilityLabel="Exit selection mode"
+              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+            >
+              <Ionicons name="close" size={26} color={Colors.textPrimary} />
+            </TouchableOpacity>
+            <Text style={styles.selectionCountText}>
+              {selectedCount} {selectedCount === 1 ? 'selected' : 'selected'}
+            </Text>
+          </View>
+
+          {/* Right: Select All & Batch Delete */}
+          <View style={styles.rightContainer}>
+            {onSelectAll && (
+              <TouchableOpacity
+                onPress={onSelectAll}
+                style={styles.selectionActionButton}
+                accessibilityLabel={isAllSelected ? 'Deselect all' : 'Select all'}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              >
+                <Ionicons
+                  name={isAllSelected ? 'checkbox' : 'checkbox-outline'}
+                  size={22}
+                  color={Colors.textPrimary}
+                />
+                <Text style={styles.actionButtonText}>
+                  {isAllSelected ? 'None' : 'All'}
+                </Text>
+              </TouchableOpacity>
+            )}
+
+            {onDeleteSelected && (
+              <TouchableOpacity
+                onPress={onDeleteSelected}
+                disabled={selectedCount === 0}
+                style={[styles.iconButton, selectedCount === 0 && { opacity: 0.4 }]}
+                accessibilityLabel={`Delete ${selectedCount} selected reminders`}
+                hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+              >
+                <Ionicons name="trash" size={23} color="#fca5a5" />
+              </TouchableOpacity>
+            )}
+          </View>
+        </View>
+      </View>
+    );
+  }
 
   return (
     <View style={[styles.headerContainer, { paddingTop: topInset + 8 }]}>
@@ -105,6 +174,11 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.15,
     shadowRadius: 3,
   },
+  selectionHeaderContainer: {
+    backgroundColor: '#023859', // Slightly deeper navy cyan for selection mode
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(0, 209, 255, 0.3)',
+  },
   headerContent: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -135,12 +209,34 @@ const styles = StyleSheet.create({
     color: Colors.textPrimary,
     letterSpacing: 0.3,
   },
+  selectionCountText: {
+    fontSize: Typography.fontSizes.lg,
+    fontWeight: Typography.weights.bold,
+    color: Colors.textPrimary,
+    marginLeft: 12,
+    letterSpacing: 0.2,
+  },
   rightContainer: {
     flexDirection: 'row',
     alignItems: 'center',
   },
   iconButton: {
     padding: 6,
-    marginLeft: 12,
+    marginLeft: 10,
+  },
+  selectionActionButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+    backgroundColor: 'rgba(255, 255, 255, 0.12)',
+    borderRadius: 6,
+    marginLeft: 8,
+  },
+  actionButtonText: {
+    color: Colors.textPrimary,
+    fontSize: Typography.fontSizes.sm,
+    fontWeight: Typography.weights.semiBold,
+    marginLeft: 4,
   },
 });
