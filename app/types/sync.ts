@@ -21,6 +21,7 @@ export interface ClientSyncChange {
 export interface BatchSyncRequest {
   lastSyncTimestamp: number;
   changes: ClientSyncChange[];
+  purgedIds?: string[];
 }
 
 export interface BatchSyncResponse {
@@ -28,6 +29,7 @@ export interface BatchSyncResponse {
   applied: string[];
   rejected: { id: string; reason: string }[];
   serverChanges: Reminder[];
+  purgedApplied?: string[];
 }
 
 export type SyncEngineStatus = 'idle' | 'syncing' | 'offline' | 'error';

@@ -7,7 +7,10 @@ import {
   upsertReminder,
   getSyncMeta,
   setSyncMeta,
-  getActiveReminders,
+  getReminderById,
+  getPurgedReminderIds,
+  removePurgedReminderIds,
+  enqueueSyncOperation,
 } from '../database/reminderDao';
 import { apiRequest } from './api';
 import { getAuthState } from './auth';
@@ -56,6 +59,9 @@ export function getSyncStatus(): SyncEngineStatus {
 
 /**
  * Main synchronization execution routine
+ * Enforces: LOCAL IS SOURCE OF TRUTH.
+ * - Deleted items are never resurrected by the server.
+ * - Discrepancies push the correct local state to the cloud DB.
  */
 export async function performSync(): Promise<boolean> {
   const authState = getAuthState();
@@ -89,9 +95,10 @@ export async function performSync(): Promise<boolean> {
       }
     }
 
-    // 2. Fetch last sync timestamp from local SQLite
+    // 2. Fetch last sync timestamp and purged IDs tombstone list
     const lastSyncRaw = await getSyncMeta(LAST_SYNC_KEY);
     const lastSyncTimestamp = lastSyncRaw ? Number(lastSyncRaw) : 0;
+    const purgedIds = await getPurgedReminderIds();
 
     // 3. Make batch request to backend
     const res = await apiRequest<BatchSyncResponse>('/sync', {
@@ -99,6 +106,7 @@ export async function performSync(): Promise<boolean> {
       body: JSON.stringify({
         lastSyncTimestamp,
         changes,
+        purgedIds,
       }),
       timeoutMs: 12000,
     });
@@ -108,22 +116,66 @@ export async function performSync(): Promise<boolean> {
     for (const item of queueItems) {
       if (appliedSet.has(item.reminderId)) {
         await removeSyncQueueItem(item.id);
-        const local = await getActiveReminders(authState.user.id);
-        const match = local.find((r) => r.id === item.reminderId);
-        if (match) {
-          match.syncStatus = 'synced';
-          match.serverUpdatedAt = res.serverTimestamp;
-          await upsertReminder(match, false);
+        const local = await getReminderById(item.reminderId);
+        if (local) {
+          local.syncStatus = 'synced';
+          local.serverUpdatedAt = res.serverTimestamp;
+          await upsertReminder(local, false);
         }
       }
     }
 
-    // 5. Process server changes received from cloud
+    // Clean up acknowledged purged IDs
+    if (res.purgedApplied && res.purgedApplied.length > 0) {
+      await removePurgedReminderIds(res.purgedApplied);
+    }
+
+    // 5. Process server changes received from cloud (Local is Source of Truth!)
     let dataChanged = false;
+    const purgedIdSet = new Set(purgedIds);
+
     if (res.serverChanges && res.serverChanges.length > 0) {
-      dataChanged = true;
       for (const serverItem of res.serverChanges) {
-        // Upsert into local SQLite with false for enqueueSync to avoid infinite loop
+        // Rule A: Was this reminder permanently purged on this device?
+        if (purgedIdSet.has(serverItem.id)) {
+          // Never resurrect! The server was already instructed to purge it.
+          continue;
+        }
+
+        const local = await getReminderById(serverItem.id);
+
+        if (local) {
+          // Rule B: Local is source of truth for deletion!
+          // If local is deleted (in trash) and server says it's active:
+          if (local.deleted && !serverItem.deleted) {
+            // Local deleted it! Never resurrect! Push delete to server so DB is corrected.
+            await enqueueSyncOperation('delete', local);
+            continue;
+          }
+
+          // Rule C: Local uncommitted edits (syncStatus === 'pending') must NOT be overwritten by server
+          if (local.syncStatus === 'pending') {
+            continue;
+          }
+
+          // Rule D: If local is active, but server says deleted:
+          if (!local.deleted && serverItem.deleted) {
+            // If local was updated more recently (e.g. restored or created locally), local truth wins!
+            if ((local.updatedAt || 0) >= (serverItem.deletedAt || serverItem.updatedAt || 0)) {
+              await enqueueSyncOperation('update', local);
+              continue;
+            }
+          }
+        } else {
+          // Rule E: Item does not exist locally.
+          // If server says deleted, do NOT insert old trash into this clean local state.
+          if (serverItem.deleted) {
+            continue;
+          }
+        }
+
+        // Apply clean server update
+        dataChanged = true;
         await upsertReminder(
           {
             ...serverItem,

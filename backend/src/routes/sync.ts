@@ -50,20 +50,18 @@ async function processPushChanges(
         }
 
         if (existing) {
-          // Idempotent retry: if existing is older or equal, update
-          if (clientUpdatedAt >= existing.updatedAt) {
-            existing.task = data.task;
-            existing.dueAt = data.dueAt;
-            existing.completed = !!data.completed;
-            existing.completedAt = data.completedAt || null;
-            existing.deleted = !!data.deleted;
-            existing.deletedAt = data.deletedAt || null;
-            existing.notes = data.notes || '';
-            if (data.repeat !== undefined) existing.repeat = data.repeat;
-            existing.updatedAt = clientUpdatedAt;
-            existing.version = (existing.version || 1) + 1;
-            await existing.save();
-          }
+          // Idempotent retry: client is source of truth
+          existing.task = data.task;
+          existing.dueAt = data.dueAt;
+          existing.completed = !!data.completed;
+          existing.completedAt = data.completedAt || null;
+          existing.deleted = !!data.deleted;
+          existing.deletedAt = data.deletedAt || null;
+          existing.notes = data.notes || '';
+          if (data.repeat !== undefined) existing.repeat = data.repeat;
+          existing.updatedAt = clientUpdatedAt;
+          existing.version = (existing.version || 1) + 1;
+          await existing.save();
           applied.push(reminderId);
         } else {
           await Reminder.create({
@@ -91,9 +89,26 @@ async function processPushChanges(
             metadata: { task: data.task, dueAt: data.dueAt },
           });
         }
+      } else if (change.operation === 'delete' || data.deleted === true) {
+        // Unconditional deletion: local is the source of truth, deletions always win!
+        if (existing) {
+          existing.deleted = true;
+          existing.deletedAt = data.deletedAt || Date.now();
+          existing.updatedAt = clientUpdatedAt;
+          existing.version = (existing.version || 1) + 1;
+          await existing.save();
+
+          logEvent({
+            userId,
+            reminderId,
+            type: 'REMINDER_DELETED',
+            metadata: { deletedAt: existing.deletedAt },
+          });
+        }
+        applied.push(reminderId);
       } else if (change.operation === 'update') {
         if (!existing) {
-          // If not present on server, create it safely
+          // If not present on server, create it safely from client data
           if (data.task && data.dueAt !== undefined) {
             await Reminder.create({
               id: reminderId,
@@ -118,71 +133,52 @@ async function processPushChanges(
           continue;
         }
 
-        // Conflict resolution: Latest update wins
-        if (clientUpdatedAt >= existing.updatedAt) {
-          const wasCompleted = existing.completed;
-          const oldDueAt = existing.dueAt;
+        // Apply client update directly: local device is the primary source of truth
+        const wasCompleted = existing.completed;
+        const oldDueAt = existing.dueAt;
 
-          if (data.task !== undefined) existing.task = data.task;
-          if (data.dueAt !== undefined) existing.dueAt = data.dueAt;
-          if (data.completed !== undefined) {
-            existing.completed = data.completed;
-            existing.completedAt = data.completed ? (data.completedAt || Date.now()) : null;
-          }
-          if (data.notes !== undefined) existing.notes = data.notes;
-          if (data.repeat !== undefined) existing.repeat = data.repeat;
-          if (data.deleted !== undefined) existing.deleted = data.deleted;
-          if (data.deletedAt !== undefined) existing.deletedAt = data.deletedAt;
-
-          existing.updatedAt = clientUpdatedAt;
-          existing.version = (existing.version || 1) + 1;
-          await existing.save();
-
-          applied.push(reminderId);
-
-          // Audit events
-          if (data.completed !== undefined && data.completed !== wasCompleted) {
-            logEvent({
-              userId,
-              reminderId,
-              type: data.completed ? 'REMINDER_COMPLETED' : 'REMINDER_UPDATED',
-              metadata: { completed: data.completed },
-            });
-          } else if (data.dueAt !== undefined && data.dueAt !== oldDueAt) {
-            logEvent({
-              userId,
-              reminderId,
-              type: 'REMINDER_POSTPONED',
-              metadata: { oldDueAt, newDueAt: data.dueAt },
-            });
-          } else {
-            logEvent({
-              userId,
-              reminderId,
-              type: 'REMINDER_UPDATED',
-              metadata: { task: existing.task },
-            });
-          }
-        } else {
-          // Server version is newer; mark applied so client will accept server version on pull
-          applied.push(reminderId);
+        if (data.task !== undefined) existing.task = data.task;
+        if (data.dueAt !== undefined) existing.dueAt = data.dueAt;
+        if (data.completed !== undefined) {
+          existing.completed = data.completed;
+          existing.completedAt = data.completed ? (data.completedAt || Date.now()) : null;
         }
-      } else if (change.operation === 'delete') {
-        if (existing) {
-          existing.deleted = true;
-          existing.deletedAt = data.deletedAt || Date.now();
-          existing.updatedAt = clientUpdatedAt;
-          existing.version = (existing.version || 1) + 1;
-          await existing.save();
+        if (data.notes !== undefined) existing.notes = data.notes;
+        if (data.repeat !== undefined) existing.repeat = data.repeat;
+        if (data.deleted !== undefined) {
+          existing.deleted = data.deleted;
+          existing.deletedAt = data.deleted ? (data.deletedAt || Date.now()) : null;
+        }
 
+        existing.updatedAt = clientUpdatedAt;
+        existing.version = (existing.version || 1) + 1;
+        await existing.save();
+
+        applied.push(reminderId);
+
+        // Audit events
+        if (data.completed !== undefined && data.completed !== wasCompleted) {
           logEvent({
             userId,
             reminderId,
-            type: 'REMINDER_DELETED',
-            metadata: { deletedAt: existing.deletedAt },
+            type: data.completed ? 'REMINDER_COMPLETED' : 'REMINDER_UPDATED',
+            metadata: { completed: data.completed },
+          });
+        } else if (data.dueAt !== undefined && data.dueAt !== oldDueAt) {
+          logEvent({
+            userId,
+            reminderId,
+            type: 'REMINDER_POSTPONED',
+            metadata: { oldDueAt, newDueAt: data.dueAt },
+          });
+        } else {
+          logEvent({
+            userId,
+            reminderId,
+            type: 'REMINDER_UPDATED',
+            metadata: { task: existing.task },
           });
         }
-        applied.push(reminderId);
       }
     } catch (err: any) {
       console.error(`Error processing change for ${change.id}:`, err);
@@ -201,21 +197,29 @@ router.post('/', requireAuth, async (req: Request, res: Response): Promise<void>
   const userId = req.user!.id;
   const lastSyncTimestamp = Number(req.body.lastSyncTimestamp) || 0;
   const changes: ClientSyncChange[] = Array.isArray(req.body.changes) ? req.body.changes : [];
+  const purgedIds: string[] = Array.isArray(req.body.purgedIds) ? req.body.purgedIds : [];
 
   logEvent({
     userId,
     type: 'SYNC_STARTED',
-    metadata: { changeCount: changes.length, lastSyncTimestamp },
+    metadata: { changeCount: changes.length, purgedCount: purgedIds.length, lastSyncTimestamp },
   });
 
   try {
-    // 1. Process client changes (Push)
+    // 1. Process permanently purged reminders from client
+    if (purgedIds.length > 0) {
+      await Reminder.deleteMany({ userId, id: { $in: purgedIds } });
+    }
+
+    // 2. Process client changes (Push)
     const { applied, rejected } = await processPushChanges(userId, changes);
 
-    // 2. Fetch server changes since lastSyncTimestamp (Pull)
-    // We include soft-deleted records so the client knows they were deleted on another device
+    // 3. Fetch server changes since lastSyncTimestamp (Pull)
+    // Exclude the IDs that this client just pushed or purged to prevent echo resurrection loops
+    const excludedIds = [...changes.map((c) => c.id), ...purgedIds];
     const serverChanges = await Reminder.find({
       userId,
+      id: { $nin: excludedIds },
       updatedAt: { $gt: lastSyncTimestamp },
     })
       .select('-_id id userId task dueAt completed completedAt deleted deletedAt notes notificationId repeat version createdAt updatedAt')
@@ -229,6 +233,7 @@ router.post('/', requireAuth, async (req: Request, res: Response): Promise<void>
       metadata: {
         appliedCount: applied.length,
         rejectedCount: rejected.length,
+        purgedCount: purgedIds.length,
         serverChangesCount: serverChanges.length,
       },
     });
@@ -238,6 +243,7 @@ router.post('/', requireAuth, async (req: Request, res: Response): Promise<void>
       applied,
       rejected,
       serverChanges,
+      purgedApplied: purgedIds,
     });
   } catch (error: any) {
     console.error('Sync error:', error);

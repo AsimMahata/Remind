@@ -377,25 +377,86 @@ export async function restoreReminderInDb(id: string): Promise<Reminder | null> 
     [now, id]
   );
 
+  // If it was previously tracked in purged_reminders, remove it
+  await db.runAsync('DELETE FROM purged_reminders WHERE id = ?', [id]);
+
   await enqueueSyncOperation('update', restored);
   return restored;
 }
 
 /**
- * Permanently delete soft-deleted reminders (Empty Trash / Purge Data)
+ * Add IDs to the persistent purged_reminders tombstone table
+ */
+export async function addPurgedReminderIds(ids: string[]): Promise<void> {
+  if (!ids || ids.length === 0) return;
+  const db = await getDatabase();
+  const now = Date.now();
+  for (const id of ids) {
+    await db.runAsync(
+      'INSERT INTO purged_reminders (id, purgedAt) VALUES (?, ?) ON CONFLICT(id) DO UPDATE SET purgedAt = excluded.purgedAt',
+      [id, now]
+    );
+  }
+}
+
+/**
+ * Retrieve all purged reminder IDs
+ */
+export async function getPurgedReminderIds(): Promise<string[]> {
+  const db = await getDatabase();
+  const rows = await db.getAllAsync<{ id: string }>('SELECT id FROM purged_reminders');
+  return rows.map((r) => r.id);
+}
+
+/**
+ * Check if a reminder ID has been permanently purged locally
+ */
+export async function isReminderPurged(id: string): Promise<boolean> {
+  const db = await getDatabase();
+  const row = await db.getFirstAsync<{ id: string }>('SELECT id FROM purged_reminders WHERE id = ?', [id]);
+  return !!row;
+}
+
+/**
+ * Remove purged reminder IDs once successfully deleted on the cloud server
+ */
+export async function removePurgedReminderIds(ids: string[]): Promise<void> {
+  if (!ids || ids.length === 0) return;
+  const db = await getDatabase();
+  const placeholders = ids.map(() => '?').join(',');
+  await db.runAsync(`DELETE FROM purged_reminders WHERE id IN (${placeholders})`, ids);
+}
+
+/**
+ * Permanently delete soft-deleted reminders (Empty Trash / Purge Data).
+ * Records their IDs in purged_reminders tombstone table so they are never resurrected.
  */
 export async function purgeDeletedRemindersFromDb(userId?: string | null): Promise<number> {
   const db = await getDatabase();
-  let query = 'DELETE FROM reminders WHERE deleted = 1';
+  let userClause = '';
   const params: any[] = [];
 
   if (userId) {
-    query += ' AND (userId = ? OR userId IS NULL)';
+    userClause = ' AND (userId = ? OR userId IS NULL)';
     params.push(userId);
   } else {
-    query += ' AND (userId IS NULL OR userId = "")';
+    userClause = ' AND (userId IS NULL OR userId = "")';
   }
 
+  // 1. Fetch IDs of reminders being purged
+  const rows = await db.getAllAsync<{ id: string }>(
+    `SELECT id FROM reminders WHERE deleted = 1${userClause}`,
+    params
+  );
+  const ids = rows.map((r) => r.id);
+
+  // 2. Add to tombstone table so sync never resurrects them
+  if (ids.length > 0) {
+    await addPurgedReminderIds(ids);
+  }
+
+  // 3. Delete from reminders table
+  const query = `DELETE FROM reminders WHERE deleted = 1${userClause}`;
   const res = await db.runAsync(query, params);
   return res.changes;
 }

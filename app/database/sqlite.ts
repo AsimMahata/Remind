@@ -1,18 +1,14 @@
 import * as SQLite from 'expo-sqlite';
 import { Platform } from 'react-native';
 
-let dbInstance: SQLite.SQLiteDatabase | null = null;
+let dbPromise: Promise<SQLite.SQLiteDatabase> | null = null;
 
-export async function getDatabase(): Promise<SQLite.SQLiteDatabase> {
-  if (dbInstance) {
-    return dbInstance;
-  }
-
+async function initDatabase(): Promise<SQLite.SQLiteDatabase> {
   // Open modern expo-sqlite async database
-  dbInstance = await SQLite.openDatabaseAsync('remind.db');
+  const db = await SQLite.openDatabaseAsync('remind.db');
 
   // Configure SQLite pragmas for high performance & reliability
-  await dbInstance.execAsync(`
+  await db.execAsync(`
     PRAGMA journal_mode = WAL;
     PRAGMA foreign_keys = ON;
 
@@ -55,18 +51,35 @@ export async function getDatabase(): Promise<SQLite.SQLiteDatabase> {
       key TEXT PRIMARY KEY,
       value TEXT
     );
+
+    CREATE TABLE IF NOT EXISTS purged_reminders (
+      id TEXT PRIMARY KEY,
+      purgedAt INTEGER NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_purged_reminders_id ON purged_reminders (id);
   `);
 
   // Migration check: ensure repeatRule column exists for recurring reminders on existing databases
   try {
-    const tableInfo = await dbInstance.getAllAsync<any>('PRAGMA table_info(reminders);');
+    const tableInfo = await db.getAllAsync<any>('PRAGMA table_info(reminders);');
     const hasRepeatCol = tableInfo.some((col: any) => col.name === 'repeatRule');
     if (!hasRepeatCol) {
-      await dbInstance.execAsync('ALTER TABLE reminders ADD COLUMN repeatRule TEXT;');
+      await db.execAsync('ALTER TABLE reminders ADD COLUMN repeatRule TEXT;');
     }
   } catch (migErr) {
     console.warn('SQLite migration warning (repeatRule):', migErr);
   }
 
-  return dbInstance;
+  return db;
+}
+
+export async function getDatabase(): Promise<SQLite.SQLiteDatabase> {
+  if (!dbPromise) {
+    dbPromise = initDatabase().catch((err) => {
+      dbPromise = null;
+      throw err;
+    });
+  }
+  return dbPromise;
 }

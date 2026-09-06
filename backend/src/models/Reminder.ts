@@ -46,7 +46,9 @@ ReminderSchema.index({ userId: 1, deleted: 1 });
 
 // Automatic trigger for updatedAt
 ReminderSchema.pre('save', function (next) {
-  this.updatedAt = Date.now();
+  if (!this.isModified('updatedAt') || !this.updatedAt) {
+    this.updatedAt = Date.now();
+  }
   if (this.completed && !this.completedAt) {
     this.completedAt = Date.now();
   } else if (!this.completed) {

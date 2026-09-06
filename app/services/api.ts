@@ -1,4 +1,4 @@
-import { API_CONFIG } from '../constants/config';
+import { API_CONFIG, fallbackToEnvBackend, ENV_FALLBACK_URL } from '../constants/config';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const TOKEN_STORAGE_KEY = '@remind_auth_token_v1';
@@ -28,14 +28,16 @@ interface RequestOptions extends RequestInit {
 }
 
 /**
- * Universal API fetch client with timeout and automatic token attachment
+ * Universal API fetch client with timeout, automatic token attachment,
+ * and dev-mode fallback from localhost to .env backend.
  */
 export async function apiRequest<T = any>(
   endpoint: string,
   options: RequestOptions = {}
 ): Promise<T> {
   const token = await getStoredToken();
-  const url = `${API_CONFIG.BASE_URL}${endpoint.startsWith('/') ? endpoint : `/${endpoint}`}`;
+  const currentBaseUrl = API_CONFIG.BASE_URL;
+  const url = `${currentBaseUrl}${endpoint.startsWith('/') ? endpoint : `/${endpoint}`}`;
 
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
@@ -72,6 +74,22 @@ export async function apiRequest<T = any>(
     return data as T;
   } catch (err: any) {
     clearTimeout(timeoutId);
+
+    // In dev mode: if connection to local backend fails, automatically fallback to cloud backend and retry
+    if (typeof __DEV__ !== 'undefined' && __DEV__ && currentBaseUrl !== ENV_FALLBACK_URL) {
+      const isConnectionError =
+        err.name === 'AbortError' ||
+        err.message?.includes('Network request failed') ||
+        err.message?.includes('Failed to fetch') ||
+        err.message?.includes('aborted');
+
+      if (isConnectionError) {
+        fallbackToEnvBackend();
+        console.warn(`[API] Connection to local backend (${currentBaseUrl}) failed. Falling back to cloud backend (${ENV_FALLBACK_URL})...`);
+        return apiRequest<T>(endpoint, options);
+      }
+    }
+
     if (err.name === 'AbortError' || err.message?.includes('canceled') || err.message?.includes('aborted')) {
       const error = new Error('Server connection timed out. Changes are saved locally.');
       (error as any).isTimeout = true;
