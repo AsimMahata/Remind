@@ -179,11 +179,17 @@ The backend is pre-configured for zero-friction cloud deployment on [Render](htt
 
 ## 📦 Standalone Android APK Build (EAS)
 
-You can build a standalone release APK that installs on any Android phone without needing Expo Go:
+You can build a standalone installable APK without needing Expo Go:
 
+### Option 1: Cloud Build (Recommended - No local Android SDK needed)
 ```bash
-# Build and save APK directly to current folder
-npx eas-cli build --platform android --profile preview --output ./remind.apk
+npx eas-cli build --platform android --profile preview
+```
+*When finished, EAS prints a direct download link and QR code to install the APK.*
+
+### Option 2: Local Build (Requires Android Studio / SDK installed locally)
+```bash
+npx eas-cli build --platform android --profile preview --local --output ./remind.apk
 ```
 
 ---
