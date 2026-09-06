@@ -85,10 +85,14 @@ export async function performSync(): Promise<boolean> {
     for (const item of queueItems) {
       try {
         const parsed = JSON.parse(item.payload);
+        // Strip voiceNoteUri — audio files are device-local and must NEVER reach the server.
+        // Replace with cloud-safe hasVoiceNote boolean so the server knows a recording exists.
+        const { voiceNoteUri, ...cloudSafe } = parsed;
+        cloudSafe.hasVoiceNote = !!(voiceNoteUri);
         changes.push({
           operation: item.operation,
           id: item.reminderId,
-          data: parsed,
+          data: cloudSafe,
         });
       } catch (e) {
         console.error('Failed to parse sync queue item payload:', e);

@@ -23,6 +23,12 @@ export interface Reminder {
   notes?: string;
   repeat?: RepeatRule | null;
 
+  // Voice note fields
+  // voiceNoteUri is strictly local — never sent to the server
+  voiceNoteUri?: string | null;
+  // hasVoiceNote is the cloud-safe boolean flag sent during sync
+  hasVoiceNote?: boolean;
+
   // Synchronization & Isolation fields
   syncStatus?: 'synced' | 'pending' | 'failed';
   serverUpdatedAt?: number;
@@ -45,6 +51,8 @@ export interface AppSettings {
   vibrateEnabled: boolean;
   quickTaskBarEnabled: boolean;
   soundEnabled: boolean;
+  // Voice notes are an advanced power-user feature — OFF by default
+  voiceNotesEnabled: boolean;
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
@@ -53,4 +61,5 @@ export const DEFAULT_SETTINGS: AppSettings = {
   vibrateEnabled: true,
   quickTaskBarEnabled: true,
   soundEnabled: true,
+  voiceNotesEnabled: false,
 };

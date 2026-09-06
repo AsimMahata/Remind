@@ -9,7 +9,10 @@
     "userInterfaceStyle": "dark",
     "backgroundColor": "#000000",
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSMicrophoneUsageDescription": "Allow Remind to record audio notes for your tasks."
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -21,16 +24,33 @@
         "RECEIVE_BOOT_COMPLETED",
         "VIBRATE",
         "POST_NOTIFICATIONS",
-        "SCHEDULE_EXACT_ALARM"
+        "SCHEDULE_EXACT_ALARM",
+        "RECORD_AUDIO",
+        "READ_EXTERNAL_STORAGE",
+        "WRITE_EXTERNAL_STORAGE",
+        "MODIFY_AUDIO_SETTINGS"
       ]
     },
     "plugins": [
+      [
+        "expo-file-system",
+        {
+          "supportsOpeningDocumentsInPlace": true,
+          "enableFileSharing": true
+        }
+      ],
       [
         "expo-notifications",
         {
           "icon": "./assets/icon.png",
           "color": "#0078B7",
           "sounds": []
+        }
+      ],
+      [
+        "expo-av",
+        {
+          "microphonePermission": "Allow Remind to record voice notes for your tasks."
         }
       ],
       "expo-font",

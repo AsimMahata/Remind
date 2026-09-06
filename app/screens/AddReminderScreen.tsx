@@ -17,15 +17,16 @@ import { Header } from '../components/Header';
 import { DatePickerModal } from '../components/DatePickerModal';
 import { TimePickerModal } from '../components/TimePickerModal';
 import { RepeatModal } from '../components/RepeatModal';
-import { speakReminderText } from '../services/tts';
+import { VoiceNoteRecorder } from '../components/VoiceNoteRecorder';
 import { getIntelligentSuggestedTime, getDefaultColdStartTime } from '../services/suggestions';
 import { formatRepeatSummary } from '../services/recurrence';
-import { RepeatRule } from '../types/reminder';
+import { RepeatRule, AppSettings } from '../types/reminder';
 import { useAppInsets } from '../hooks/useAppInsets';
 
 interface AddReminderScreenProps {
+  settings: AppSettings;
   onBack: () => void;
-  onSaveReminder: (task: string, dueAt: number, repeat?: RepeatRule | null) => void;
+  onSaveReminder: (task: string, dueAt: number, repeat?: RepeatRule | null, voiceNoteUri?: string | null) => void;
 }
 
 const MONTH_NAMES = [
@@ -38,12 +39,14 @@ const DAY_NAMES = [
 ];
 
 export const AddReminderScreen: React.FC<AddReminderScreenProps> = ({
+  settings,
   onBack,
   onSaveReminder,
 }) => {
   const { bottomInset } = useAppInsets();
   const [taskText, setTaskText] = useState('');
   const [inputHeight, setInputHeight] = useState(34);
+  const [voiceNoteUri, setVoiceNoteUri] = useState<string | null>(null);
   // Initialize with the cold-start rule (:00 hour) on TODAY
   const [dueDate, setDueDate] = useState<Date>(() => {
     const d = getDefaultColdStartTime();
@@ -123,7 +126,7 @@ export const AddReminderScreen: React.FC<AddReminderScreenProps> = ({
       // ignore
     }
 
-    onSaveReminder(taskText.trim(), dueDate.getTime(), repeatRule);
+    onSaveReminder(taskText.trim(), dueDate.getTime(), repeatRule, voiceNoteUri);
     onBack();
   };
 
@@ -148,13 +151,6 @@ export const AddReminderScreen: React.FC<AddReminderScreenProps> = ({
     setDueDate(d);
   };
 
-  const handleVoiceTest = () => {
-    if (taskText.trim()) {
-      speakReminderText(taskText.trim());
-    } else {
-      speakReminderText('Please enter task name first');
-    }
-  };
 
   return (
     <KeyboardAvoidingView
@@ -199,16 +195,19 @@ export const AddReminderScreen: React.FC<AddReminderScreenProps> = ({
                 }
               }}
             />
-            <TouchableOpacity
-              onPress={handleVoiceTest}
-              style={styles.micButton}
-              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-              accessibilityLabel="Voice preview"
-            >
-              <Ionicons name="mic-outline" size={24} color={Colors.accentCyan} />
-            </TouchableOpacity>
           </View>
         </View>
+
+        {/* Voice Note Section — only visible when voiceNotesEnabled is ON */}
+        {settings.voiceNotesEnabled && (
+          <View style={styles.cardSection}>
+            <Text style={styles.sectionLabel}>VOICE NOTE</Text>
+            <VoiceNoteRecorder
+              existingUri={voiceNoteUri}
+              onRecordingChange={setVoiceNoteUri}
+            />
+          </View>
+        )}
 
         {/* Section 2: Separate Date & Time Selection */}
         <View style={styles.cardSection}>
@@ -469,7 +468,7 @@ export const AddReminderScreen: React.FC<AddReminderScreenProps> = ({
         <View style={styles.infoBanner}>
           <Ionicons name="notifications-outline" size={18} color={Colors.accentCyan} />
           <Text style={styles.infoBannerText}>
-            Full alert notification and voice reminder will trigger at the chosen time.
+            Full alert notification{settings.voiceReminderEnabled ? ' and voice reminder' : ''} will trigger at the chosen time.
           </Text>
         </View>
       </ScrollView>
@@ -573,10 +572,6 @@ const styles = StyleSheet.create({
     color: Colors.textPrimary,
     paddingVertical: 2,
     paddingHorizontal: 0,
-  },
-  micButton: {
-    padding: 6,
-    marginLeft: 8,
   },
   pickerRow: {
     backgroundColor: Colors.cardBackground,

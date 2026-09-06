@@ -24,6 +24,7 @@ async function initDatabase(): Promise<SQLite.SQLiteDatabase> {
       notes TEXT DEFAULT '',
       notificationId TEXT,
       repeatRule TEXT,
+      voiceNoteUri TEXT,
       version INTEGER DEFAULT 1,
       createdAt INTEGER NOT NULL,
       updatedAt INTEGER NOT NULL,
@@ -67,8 +68,12 @@ async function initDatabase(): Promise<SQLite.SQLiteDatabase> {
     if (!hasRepeatCol) {
       await db.execAsync('ALTER TABLE reminders ADD COLUMN repeatRule TEXT;');
     }
+    const hasVoiceNoteCol = tableInfo.some((col: any) => col.name === 'voiceNoteUri');
+    if (!hasVoiceNoteCol) {
+      await db.execAsync('ALTER TABLE reminders ADD COLUMN voiceNoteUri TEXT;');
+    }
   } catch (migErr) {
-    console.warn('SQLite migration warning (repeatRule):', migErr);
+    console.warn('SQLite migration warning:', migErr);
   }
 
   return db;

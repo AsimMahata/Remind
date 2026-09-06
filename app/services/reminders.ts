@@ -19,6 +19,7 @@ import {
 import { triggerSync } from './sync';
 import { getAuthState } from './auth';
 import { apiRequest } from './api';
+import { deleteRecording } from './voiceNotes';
 
 /**
  * Format timestamp into Android style date string matching screenshot:
@@ -171,7 +172,8 @@ export async function createReminder(
   task: string,
   dueAt: number,
   allReminders: Reminder[],
-  repeat?: RepeatRule | null
+  repeat?: RepeatRule | null,
+  voiceNoteUri?: string | null
 ): Promise<{ updatedList: Reminder[]; newReminder: Reminder }> {
   const authState = getAuthState();
   const now = Date.now();
@@ -186,6 +188,7 @@ export async function createReminder(
     deleted: false,
     deletedAt: null,
     repeat: repeat || null,
+    voiceNoteUri: voiceNoteUri || null,
     createdAt: now,
     updatedAt: now,
     syncStatus: 'pending',
@@ -550,10 +553,22 @@ export async function restoreDeletedReminder(id: string): Promise<Reminder | nul
 export async function permanentlyPurgeDeletedReminders(): Promise<number> {
   const authState = getAuthState();
 
-  // 1. Purge locally from SQLite
+  // 1. Collect voice note URIs for all reminders about to be purged,
+  //    so we can delete their local audio files after the DB purge.
+  const deletedReminders = await getDeletedReminders(authState.user?.id);
+  const voiceUris: string[] = deletedReminders
+    .filter((r) => r.voiceNoteUri)
+    .map((r) => r.voiceNoteUri as string);
+
+  // 2. Purge locally from SQLite
   const localPurged = await purgeDeletedRemindersFromDb(authState.user?.id);
 
-  // 2. If authenticated, purge on backend
+  // 3. Delete local audio files AFTER the DB records are gone
+  for (const uri of voiceUris) {
+    await deleteRecording(uri);
+  }
+
+  // 4. If authenticated, purge on backend
   if (authState.isAuthenticated) {
     try {
       await apiRequest('/reminders/purge-deleted', { method: 'POST' });

@@ -26,6 +26,7 @@ import { AdminDashboardModal } from '../components/AdminDashboardModal';
 import { TrashModal } from '../components/TrashModal';
 import { fetchReminderStats } from '../services/reminders';
 import { API_CONFIG } from '../constants/config';
+import { countRemindersWithVoiceNotes } from '../database/reminderDao';
 
 interface SettingsScreenProps {
   settings: AppSettings;
@@ -270,9 +271,9 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
           activeOpacity={0.7}
         >
           <View style={styles.settingTextCol}>
-            <Text style={styles.settingMainText}>Voice</Text>
+            <Text style={styles.settingMainText}>Voice reminders</Text>
             <Text style={styles.settingSubText}>
-              Uses system default speech synthesizer (TTS)
+              Speak reminder aloud when it triggers (device TTS)
             </Text>
           </View>
           <View
@@ -320,6 +321,56 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
             ]}
           >
             {settings.vibrateEnabled && (
+              <Ionicons name="checkmark" size={18} color="#FFFFFF" />
+            )}
+          </View>
+        </TouchableOpacity>
+
+        {/* Section: Advanced */}
+        <Text style={[styles.sectionTitle, { marginTop: 28 }]}>Advanced</Text>
+
+        {/* Setting: Voice Notes */}
+        <TouchableOpacity
+          style={styles.settingRow}
+          onPress={async () => {
+            const currentlyEnabled = settings.voiceNotesEnabled;
+            if (currentlyEnabled) {
+              // Warn before disabling if recordings exist
+              const count = await countRemindersWithVoiceNotes();
+              if (count > 0) {
+                Alert.alert(
+                  'Hide voice notes?',
+                  'Existing recordings will remain stored locally. You can re-enable Voice notes at any time to access them.',
+                  [
+                    { text: 'Cancel', style: 'cancel' },
+                    {
+                      text: 'Disable',
+                      onPress: () => onUpdateSettings({ voiceNotesEnabled: false }),
+                    },
+                  ]
+                );
+              } else {
+                onUpdateSettings({ voiceNotesEnabled: false });
+              }
+            } else {
+              onUpdateSettings({ voiceNotesEnabled: true });
+            }
+          }}
+          activeOpacity={0.7}
+        >
+          <View style={styles.settingTextCol}>
+            <Text style={styles.settingMainText}>Voice notes</Text>
+            <Text style={styles.settingSubText}>
+              Record audio notes attached to reminders (stored locally only)
+            </Text>
+          </View>
+          <View
+            style={[
+              styles.checkboxBox,
+              settings.voiceNotesEnabled && styles.checkboxBoxChecked,
+            ]}
+          >
+            {settings.voiceNotesEnabled && (
               <Ionicons name="checkmark" size={18} color="#FFFFFF" />
             )}
           </View>

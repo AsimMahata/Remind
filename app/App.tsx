@@ -286,8 +286,8 @@ export default function App() {
   );
 
   const handleCreateReminder = useCallback(
-    async (taskText: string, dueAt: number, repeat?: RepeatRule | null) => {
-      const { updatedList } = await createReminder(taskText, dueAt, reminders, repeat);
+    async (taskText: string, dueAt: number, repeat?: RepeatRule | null, voiceNoteUri?: string | null) => {
+      const { updatedList } = await createReminder(taskText, dueAt, reminders, repeat, voiceNoteUri);
       setReminders(updatedList);
     },
     [reminders]
@@ -384,6 +384,7 @@ export default function App() {
 
         {currentScreen === 'ADD_REMINDER' && (
           <AddReminderScreen
+            settings={settings}
             onBack={navigateBack}
             onSaveReminder={handleCreateReminder}
           />
@@ -404,6 +405,7 @@ export default function App() {
           <EditReminderScreen
             key={editingReminder.id}
             reminder={editingReminder}
+            settings={settings}
             onBack={handleBackFromEdit}
             onUpdateReminder={handleUpdateReminder}
             onDeleteReminder={handleDeleteReminder}

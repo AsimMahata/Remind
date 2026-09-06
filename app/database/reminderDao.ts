@@ -27,6 +27,7 @@ function rowToReminder(row: any): Reminder {
     notes: row.notes || '',
     notificationId: row.notificationId || null,
     repeat,
+    voiceNoteUri: row.voiceNoteUri || null,
     version: Number(row.version || 1),
     createdAt: Number(row.createdAt),
     updatedAt: Number(row.updatedAt),
@@ -83,8 +84,8 @@ export async function upsertReminder(
   await db.runAsync(
     `INSERT INTO reminders (
       id, userId, task, dueAt, completed, completedAt, deleted, deletedAt,
-      notes, notificationId, repeatRule, version, createdAt, updatedAt, syncStatus, serverUpdatedAt
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      notes, notificationId, repeatRule, voiceNoteUri, version, createdAt, updatedAt, syncStatus, serverUpdatedAt
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(id) DO UPDATE SET
       userId = COALESCE(excluded.userId, reminders.userId),
       task = excluded.task,
@@ -101,6 +102,8 @@ export async function upsertReminder(
       notes = excluded.notes,
       notificationId = excluded.notificationId,
       repeatRule = excluded.repeatRule,
+      -- voiceNoteUri is local-only: preserve existing value if incoming is NULL
+      voiceNoteUri = COALESCE(excluded.voiceNoteUri, reminders.voiceNoteUri),
       version = excluded.version,
       updatedAt = excluded.updatedAt,
       syncStatus = excluded.syncStatus,
@@ -117,6 +120,7 @@ export async function upsertReminder(
       reminder.notes || '',
       reminder.notificationId || null,
       reminder.repeat ? JSON.stringify(reminder.repeat) : null,
+      reminder.voiceNoteUri || null,
       reminder.version || 1,
       createdAt,
       updatedAt,
@@ -510,3 +514,27 @@ export async function getReminderStats(
   };
 }
 
+/**
+ * Retrieve the voiceNoteUri for a reminder before it is purged,
+ * so callers can delete the local audio file.
+ */
+export async function getVoiceNoteUriForReminder(id: string): Promise<string | null> {
+  const db = await getDatabase();
+  const row = await db.getFirstAsync<{ voiceNoteUri: string | null }>(
+    'SELECT voiceNoteUri FROM reminders WHERE id = ?',
+    [id]
+  );
+  return row?.voiceNoteUri || null;
+}
+
+/**
+ * Count reminders that have a local voice note (voiceNoteUri IS NOT NULL).
+ * Used by Settings to warn before disabling voice notes.
+ */
+export async function countRemindersWithVoiceNotes(): Promise<number> {
+  const db = await getDatabase();
+  const res = await db.getFirstAsync<{ count: number }>(
+    "SELECT count(*) as count FROM reminders WHERE voiceNoteUri IS NOT NULL AND voiceNoteUri != '' AND deleted = 0"
+  );
+  return res?.count || 0;
+}

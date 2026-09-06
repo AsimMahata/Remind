@@ -12,18 +12,19 @@ import {
 } from 'react-native';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
-import { Reminder, RepeatRule } from '../types/reminder';
+import { Reminder, RepeatRule, AppSettings } from '../types/reminder';
 import { Colors } from '../constants/theme';
 import { Header } from '../components/Header';
 import { DatePickerModal } from '../components/DatePickerModal';
 import { TimePickerModal } from '../components/TimePickerModal';
 import { RepeatModal } from '../components/RepeatModal';
-import { speakReminderText } from '../services/tts';
+import { VoiceNoteRecorder } from '../components/VoiceNoteRecorder';
 import { formatRepeatSummary } from '../services/recurrence';
 import { useAppInsets } from '../hooks/useAppInsets';
 
 interface EditReminderScreenProps {
   reminder: Reminder;
+  settings: AppSettings;
   onBack: () => void;
   onUpdateReminder: (id: string, updates: Partial<Reminder>) => void;
   onDeleteReminder: (id: string) => void;
@@ -40,6 +41,7 @@ const DAY_NAMES = [
 
 export const EditReminderScreen: React.FC<EditReminderScreenProps> = ({
   reminder,
+  settings,
   onBack,
   onUpdateReminder,
   onDeleteReminder,
@@ -49,6 +51,8 @@ export const EditReminderScreen: React.FC<EditReminderScreenProps> = ({
   const [inputHeight, setInputHeight] = useState(34);
   const [dueDate, setDueDate] = useState<Date>(new Date(reminder.dueAt));
   const [isCompleted, setIsCompleted] = useState<boolean>(reminder.completed);
+  // Voice note local state (local URI only — never synced)
+  const [voiceNoteUri, setVoiceNoteUri] = useState<string | null>(reminder.voiceNoteUri || null);
 
   // Modals
   const [isDatePickerVisible, setIsDatePickerVisible] = useState(false);
@@ -103,6 +107,7 @@ export const EditReminderScreen: React.FC<EditReminderScreenProps> = ({
       dueAt: dueDate.getTime(),
       completed: isCompleted,
       repeat: repeatRule,
+      voiceNoteUri: voiceNoteUri,
     });
     onBack();
   };
@@ -158,13 +163,6 @@ export const EditReminderScreen: React.FC<EditReminderScreenProps> = ({
     setDueDate(d);
   };
 
-  const handleVoiceTest = () => {
-    if (taskText.trim()) {
-      speakReminderText(taskText.trim());
-    } else {
-      speakReminderText('Please enter task name first');
-    }
-  };
 
   return (
     <KeyboardAvoidingView
@@ -228,16 +226,20 @@ export const EditReminderScreen: React.FC<EditReminderScreenProps> = ({
                 }
               }}
             />
-            <TouchableOpacity
-              onPress={handleVoiceTest}
-              style={styles.micButton}
-              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-              accessibilityLabel="Listen to task"
-            >
-              <Ionicons name="volume-medium-outline" size={22} color={Colors.accentCyan} />
-            </TouchableOpacity>
           </View>
         </View>
+
+        {/* Voice Note Section — only visible when voiceNotesEnabled is ON */}
+        {settings.voiceNotesEnabled && (
+          <View style={styles.cardSection}>
+            <Text style={styles.sectionLabel}>VOICE NOTE</Text>
+            <VoiceNoteRecorder
+              existingUri={voiceNoteUri}
+              hasVoiceNoteOnServer={!voiceNoteUri && !!reminder.hasVoiceNote}
+              onRecordingChange={setVoiceNoteUri}
+            />
+          </View>
+        )}
 
         {/* Section 2: Date & Time Selector */}
         <View style={styles.cardSection}>
