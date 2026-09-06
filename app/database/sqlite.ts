@@ -63,8 +63,9 @@ async function initDatabase(): Promise<SQLite.SQLiteDatabase> {
     CREATE TABLE IF NOT EXISTS alarms (
       id TEXT PRIMARY KEY,
       time TEXT NOT NULL,
+      targetTimestamp INTEGER,
       label TEXT DEFAULT '',
-      repeat TEXT NOT NULL,
+      repeat TEXT DEFAULT 'once',
       enabled INTEGER NOT NULL DEFAULT 1,
       isTemporary INTEGER NOT NULL DEFAULT 0,
       soundUri TEXT DEFAULT 'default',
@@ -75,6 +76,7 @@ async function initDatabase(): Promise<SQLite.SQLiteDatabase> {
     );
 
     CREATE INDEX IF NOT EXISTS idx_alarms_enabled ON alarms (enabled);
+    CREATE INDEX IF NOT EXISTS idx_alarms_targetTimestamp ON alarms (targetTimestamp);
   `);
 
   // Migration check: ensure repeatRule column exists for recurring reminders on existing databases

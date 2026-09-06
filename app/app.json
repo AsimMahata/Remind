@@ -25,6 +25,8 @@
         "VIBRATE",
         "POST_NOTIFICATIONS",
         "SCHEDULE_EXACT_ALARM",
+        "USE_EXACT_ALARM",
+        "com.android.alarm.permission.SET_ALARM",
         "RECORD_AUDIO",
         "READ_EXTERNAL_STORAGE",
         "WRITE_EXTERNAL_STORAGE",

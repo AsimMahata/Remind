@@ -158,6 +158,12 @@ export default function App() {
     navigateTo(tab);
   }, [currentScreen, navigateTo]);
 
+  // Reload alarms from local database
+  const reloadAlarms = useCallback(async () => {
+    const list = await getAllAlarmsFromDb();
+    setAlarms(list);
+  }, []);
+
   // 1. Initial app load: SQLite Database, Storage, Auth, Notifications & Alarm System
   useEffect(() => {
     async function initializeApp() {
@@ -411,11 +417,6 @@ export default function App() {
   // ==========================================
   // HANDLERS FOR ALARMS (100% Local & Isolated)
   // ==========================================
-  const reloadAlarms = async () => {
-    const list = await getAllAlarmsFromDb();
-    setAlarms(list);
-  };
-
   const handleAddAlarm = useCallback(
     async (alarmData: {
       time: string;
@@ -440,7 +441,7 @@ export default function App() {
       await scheduleAlarm(newAlarm);
       await reloadAlarms();
     },
-    []
+    [reloadAlarms]
   );
 
   const handleUpdateAlarm = useCallback(
@@ -462,7 +463,7 @@ export default function App() {
       }
       await reloadAlarms();
     },
-    [alarms]
+    [alarms, reloadAlarms]
   );
 
   const handleToggleAlarm = useCallback(
@@ -480,7 +481,7 @@ export default function App() {
       }
       await reloadAlarms();
     },
-    [alarms]
+    [alarms, reloadAlarms]
   );
 
   const handleDeleteAlarm = useCallback(
@@ -492,14 +493,14 @@ export default function App() {
       await deleteAlarmFromDb(id);
       await reloadAlarms();
     },
-    [alarms]
+    [alarms, reloadAlarms]
   );
 
   const handleDismissRingingAlarm = useCallback(async (alarmId: string) => {
     await dismissAlarm(alarmId);
     setActiveRingingAlarm(null);
     await reloadAlarms();
-  }, []);
+  }, [reloadAlarms]);
 
   const handleSnoozeRingingAlarm = useCallback(async (alarmId: string) => {
     await snoozeAlarm(alarmId, 10);
