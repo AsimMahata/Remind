@@ -8,6 +8,7 @@ import {
 import { StatusBar as ExpoStatusBar } from 'expo-status-bar';
 
 import { Reminder, RepeatRule, AppSettings, DEFAULT_SETTINGS } from './types/reminder';
+import { Alarm } from './types/alarm';
 import { Colors } from './constants/theme';
 import {
   loadRemindersFromStorage,
@@ -35,21 +36,46 @@ import {
   countOfflineReminders,
   assignOfflineRemindersToUser,
 } from './database/reminderDao';
+import {
+  getAllAlarmsFromDb,
+  upsertAlarmInDb,
+  deleteAlarmFromDb,
+  setAlarmEnabledInDb,
+} from './database/alarmDao';
+import {
+  setupAlarmSystem,
+  scheduleAlarm,
+  cancelAlarm,
+  dismissAlarm,
+  snoozeAlarm,
+  registerAlarmNotificationListeners,
+  subscribeToRingingAlarm,
+} from './services/alarmEngine';
 import { initializeAuth, subscribeToAuth } from './services/auth';
 import { setupSyncEngine, subscribeToSyncData, performSync } from './services/sync';
 
 import { HomeScreen } from './screens/HomeScreen';
-import { AddReminderScreen } from './screens/AddReminderScreen';
+import { AlarmsScreen } from './screens/AlarmsScreen';
 import { SettingsScreen } from './screens/SettingsScreen';
+import { AddReminderScreen } from './screens/AddReminderScreen';
 import { EditReminderScreen } from './screens/EditReminderScreen';
+import { BottomNavDock, PrimaryTab } from './components/BottomNavDock';
+import { AlarmRingingModal } from './components/AlarmRingingModal';
 import { OfflineMigrationModal } from './components/OfflineMigrationModal';
 
-type ScreenType = 'HOME' | 'ADD_REMINDER' | 'SETTINGS' | 'EDIT_REMINDER';
+type ScreenType = 'REMINDERS' | 'ALARMS' | 'SETTINGS' | 'ADD_REMINDER' | 'EDIT_REMINDER';
 
 export default function App() {
-  const [currentScreen, setCurrentScreen] = useState<ScreenType>('HOME');
+  const [currentScreen, setCurrentScreen] = useState<ScreenType>('REMINDERS');
+  const [activeTab, setActiveTab] = useState<PrimaryTab>('REMINDERS');
   const [editingReminder, setEditingReminder] = useState<Reminder | null>(null);
+  
+  // Reminders state
   const [reminders, setReminders] = useState<Reminder[]>([]);
+  // Alarms state (100% local, separate from backend & cloud sync)
+  const [alarms, setAlarms] = useState<Alarm[]>([]);
+  const [activeRingingAlarm, setActiveRingingAlarm] = useState<Alarm | null>(null);
+  
   const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
   const [isReady, setIsReady] = useState(false);
 
@@ -66,26 +92,29 @@ export default function App() {
     Animated.parallel([
       Animated.timing(fadeAnim, {
         toValue: 0,
-        duration: 100,
+        duration: 90,
         useNativeDriver: true,
       }),
       Animated.timing(slideAnim, {
-        toValue: -24,
-        duration: 100,
+        toValue: -16,
+        duration: 90,
         useNativeDriver: true,
       }),
     ]).start(() => {
       setCurrentScreen(screen);
-      slideAnim.setValue(24);
+      if (screen === 'REMINDERS' || screen === 'ALARMS' || screen === 'SETTINGS') {
+        setActiveTab(screen);
+      }
+      slideAnim.setValue(16);
       Animated.parallel([
         Animated.timing(fadeAnim, {
           toValue: 1,
-          duration: 180,
+          duration: 150,
           useNativeDriver: true,
         }),
         Animated.timing(slideAnim, {
           toValue: 0,
-          duration: 180,
+          duration: 150,
           useNativeDriver: true,
         }),
       ]).start();
@@ -96,38 +125,46 @@ export default function App() {
     Animated.parallel([
       Animated.timing(fadeAnim, {
         toValue: 0,
-        duration: 100,
+        duration: 90,
         useNativeDriver: true,
       }),
       Animated.timing(slideAnim, {
-        toValue: 24,
-        duration: 100,
+        toValue: 16,
+        duration: 90,
         useNativeDriver: true,
       }),
     ]).start(() => {
-      setCurrentScreen('HOME');
-      slideAnim.setValue(-24);
+      setCurrentScreen('REMINDERS');
+      setActiveTab('REMINDERS');
+      slideAnim.setValue(-16);
       Animated.parallel([
         Animated.timing(fadeAnim, {
           toValue: 1,
-          duration: 180,
+          duration: 150,
           useNativeDriver: true,
         }),
         Animated.timing(slideAnim, {
           toValue: 0,
-          duration: 180,
+          duration: 150,
           useNativeDriver: true,
         }),
       ]).start();
     });
   }, [fadeAnim, slideAnim]);
 
-  // 1. Initial app load: SQLite Database, Storage, Auth, & Notifications
+  // Tab change handler from the Bottom Navigation Dock
+  const handleTabChange = useCallback((tab: PrimaryTab) => {
+    if (currentScreen === tab) return;
+    navigateTo(tab);
+  }, [currentScreen, navigateTo]);
+
+  // 1. Initial app load: SQLite Database, Storage, Auth, Notifications & Alarm System
   useEffect(() => {
     async function initializeApp() {
       try {
         await setupNotificationSystem();
-        await getDatabase(); // Ensure SQLite database and tables are created
+        await setupAlarmSystem();
+        await getDatabase(); // Ensure SQLite database and tables (reminders, alarms) exist
 
         // One-time migration: Import any legacy AsyncStorage reminders into SQLite
         const existingInDb = await loadActiveRemindersFromDb();
@@ -143,12 +180,14 @@ export default function App() {
         // Initialize Authentication & Session
         await initializeAuth();
 
-        // Load active reminders & settings
-        const [loadedReminders, loadedSettings] = await Promise.all([
+        // Load active reminders, alarms, & settings
+        const [loadedReminders, loadedAlarms, loadedSettings] = await Promise.all([
           loadActiveRemindersFromDb(),
+          getAllAlarmsFromDb(),
           loadSettingsFromStorage(),
         ]);
         setReminders(loadedReminders);
+        setAlarms(loadedAlarms);
         setSettings(loadedSettings);
 
         // Start background sync listener
@@ -163,7 +202,7 @@ export default function App() {
     initializeApp();
   }, []);
 
-  // 2. Listen to Cloud Sync changes & refresh UI automatically
+  // 2. Listen to Cloud Sync changes & refresh Reminders UI automatically
   useEffect(() => {
     const unsubData = subscribeToSyncData(async () => {
       const refreshed = await loadActiveRemindersFromDb();
@@ -199,7 +238,7 @@ export default function App() {
     };
   }, []);
 
-  // 4. Notification action listeners (Finish, Postpone 15m, Postpone 1h)
+  // 4. Notification action listeners for Reminders (Finish, Postpone 15m, Postpone 1h)
   useEffect(() => {
     const cleanup = registerNotificationListeners(
       async (reminderId) => {
@@ -225,17 +264,46 @@ export default function App() {
     };
   }, []);
 
-  // 5. Android Hardware Back Button Handler
+  // 5. Alarm listeners & active ringing subscription
+  useEffect(() => {
+    const unsubRinging = subscribeToRingingAlarm((ringing) => {
+      setActiveRingingAlarm(ringing);
+    });
+
+    const cleanupAlarmNotif = registerAlarmNotificationListeners(
+      (alarm) => {
+        setActiveRingingAlarm(alarm);
+        reloadAlarms();
+      },
+      () => {
+        reloadAlarms();
+      }
+    );
+
+    return () => {
+      unsubRinging();
+      cleanupAlarmNotif();
+    };
+  }, [reloadAlarms]);
+
+  // 6. Android Hardware Back Button Handler
   useEffect(() => {
     const onBackPress = () => {
-      if (currentScreen !== 'HOME') {
-        if (currentScreen === 'EDIT_REMINDER') {
-          setEditingReminder(null);
-        }
+      if (currentScreen === 'EDIT_REMINDER') {
+        setEditingReminder(null);
         navigateBack();
         return true;
       }
-      return false;
+      if (currentScreen === 'ADD_REMINDER') {
+        navigateBack();
+        return true;
+      }
+      if (currentScreen === 'ALARMS' || currentScreen === 'SETTINGS') {
+        // Return to primary Reminders (Home) tab
+        navigateTo('REMINDERS');
+        return true;
+      }
+      return false; // On REMINDERS, exit app naturally
     };
 
     const backHandler = BackHandler.addEventListener(
@@ -244,9 +312,11 @@ export default function App() {
     );
 
     return () => backHandler.remove();
-  }, [currentScreen, navigateBack]);
+  }, [currentScreen, navigateBack, navigateTo]);
 
-  // Handlers for Reminder actions
+  // ==========================================
+  // HANDLERS FOR REMINDERS
+  // ==========================================
   const handleToggleComplete = useCallback(async (id: string) => {
     const updated = await toggleReminderCompletion(id, reminders);
     setReminders(updated);
@@ -338,6 +408,105 @@ export default function App() {
     [settings]
   );
 
+  // ==========================================
+  // HANDLERS FOR ALARMS (100% Local & Isolated)
+  // ==========================================
+  const reloadAlarms = async () => {
+    const list = await getAllAlarmsFromDb();
+    setAlarms(list);
+  };
+
+  const handleAddAlarm = useCallback(
+    async (alarmData: {
+      time: string;
+      targetTimestamp: number;
+      label?: string;
+      vibrate: boolean;
+      soundUri?: string;
+    }) => {
+      const newAlarm: Alarm = {
+        id: `alarm_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+        time: alarmData.time,
+        targetTimestamp: alarmData.targetTimestamp,
+        label: alarmData.label,
+        enabled: true,
+        soundUri: alarmData.soundUri || 'default',
+        vibrate: alarmData.vibrate,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      };
+
+      await upsertAlarmInDb(newAlarm);
+      await scheduleAlarm(newAlarm);
+      await reloadAlarms();
+    },
+    []
+  );
+
+  const handleUpdateAlarm = useCallback(
+    async (id: string, updates: Partial<Alarm>) => {
+      const existing = alarms.find((a) => a.id === id);
+      if (!existing) return;
+
+      const updated: Alarm = {
+        ...existing,
+        ...updates,
+        updatedAt: Date.now(),
+      };
+
+      await upsertAlarmInDb(updated);
+      if (updated.enabled) {
+        await scheduleAlarm(updated);
+      } else {
+        await cancelAlarm(updated.notificationId);
+      }
+      await reloadAlarms();
+    },
+    [alarms]
+  );
+
+  const handleToggleAlarm = useCallback(
+    async (id: string, enabled: boolean) => {
+      const existing = alarms.find((a) => a.id === id);
+      if (!existing) return;
+
+      await setAlarmEnabledInDb(id, enabled);
+      const updated = { ...existing, enabled };
+
+      if (enabled) {
+        await scheduleAlarm(updated);
+      } else {
+        await cancelAlarm(existing.notificationId);
+      }
+      await reloadAlarms();
+    },
+    [alarms]
+  );
+
+  const handleDeleteAlarm = useCallback(
+    async (id: string) => {
+      const existing = alarms.find((a) => a.id === id);
+      if (existing?.notificationId) {
+        await cancelAlarm(existing.notificationId);
+      }
+      await deleteAlarmFromDb(id);
+      await reloadAlarms();
+    },
+    [alarms]
+  );
+
+  const handleDismissRingingAlarm = useCallback(async (alarmId: string) => {
+    await dismissAlarm(alarmId);
+    setActiveRingingAlarm(null);
+    await reloadAlarms();
+  }, []);
+
+  const handleSnoozeRingingAlarm = useCallback(async (alarmId: string) => {
+    await snoozeAlarm(alarmId, 10);
+    setActiveRingingAlarm(null);
+    await reloadAlarms();
+  }, [reloadAlarms]);
+
   // Offline migration handlers
   const handleConfirmMigration = async () => {
     setShowOfflineModal(false);
@@ -353,6 +522,11 @@ export default function App() {
     setShowOfflineModal(false);
   };
 
+  const isPrimaryScreen =
+    currentScreen === 'REMINDERS' ||
+    currentScreen === 'ALARMS' ||
+    currentScreen === 'SETTINGS';
+
   return (
     <View style={styles.appContainer}>
       <ExpoStatusBar style="light" />
@@ -366,7 +540,7 @@ export default function App() {
           },
         ]}
       >
-        {currentScreen === 'HOME' && (
+        {currentScreen === 'REMINDERS' && (
           <HomeScreen
             reminders={reminders}
             onToggleComplete={handleToggleComplete}
@@ -382,11 +556,13 @@ export default function App() {
           />
         )}
 
-        {currentScreen === 'ADD_REMINDER' && (
-          <AddReminderScreen
-            settings={settings}
-            onBack={navigateBack}
-            onSaveReminder={handleCreateReminder}
+        {currentScreen === 'ALARMS' && (
+          <AlarmsScreen
+            alarms={alarms}
+            onAddAlarm={handleAddAlarm}
+            onUpdateAlarm={handleUpdateAlarm}
+            onToggleAlarm={handleToggleAlarm}
+            onDeleteAlarm={handleDeleteAlarm}
           />
         )}
 
@@ -394,10 +570,19 @@ export default function App() {
           <SettingsScreen
             settings={settings}
             onUpdateSettings={handleUpdateSettings}
-            onBack={navigateBack}
+            onBack={() => navigateTo('REMINDERS')}
+            showBack={false}
             onRefreshReminders={() => {
               loadActiveRemindersFromDb().then(setReminders);
             }}
+          />
+        )}
+
+        {currentScreen === 'ADD_REMINDER' && (
+          <AddReminderScreen
+            settings={settings}
+            onBack={navigateBack}
+            onSaveReminder={handleCreateReminder}
           />
         )}
 
@@ -412,6 +597,21 @@ export default function App() {
           />
         )}
       </Animated.View>
+
+      {/* Bottom Navigation Dock: Always displayed on the 3 primary screens */}
+      {isPrimaryScreen && (
+        <BottomNavDock
+          activeTab={activeTab}
+          onSelectTab={handleTabChange}
+        />
+      )}
+
+      {/* Fullscreen Alarm Ringing Modal */}
+      <AlarmRingingModal
+        alarm={activeRingingAlarm}
+        onDismiss={handleDismissRingingAlarm}
+        onSnooze={handleSnoozeRingingAlarm}
+      />
 
       {/* Offline to Online Migration Confirmation Modal */}
       <OfflineMigrationModal

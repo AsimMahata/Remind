@@ -59,6 +59,22 @@ async function initDatabase(): Promise<SQLite.SQLiteDatabase> {
     );
 
     CREATE INDEX IF NOT EXISTS idx_purged_reminders_id ON purged_reminders (id);
+
+    CREATE TABLE IF NOT EXISTS alarms (
+      id TEXT PRIMARY KEY,
+      time TEXT NOT NULL,
+      label TEXT DEFAULT '',
+      repeat TEXT NOT NULL,
+      enabled INTEGER NOT NULL DEFAULT 1,
+      isTemporary INTEGER NOT NULL DEFAULT 0,
+      soundUri TEXT DEFAULT 'default',
+      vibrate INTEGER NOT NULL DEFAULT 1,
+      notificationId TEXT,
+      createdAt INTEGER NOT NULL,
+      updatedAt INTEGER NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_alarms_enabled ON alarms (enabled);
   `);
 
   // Migration check: ensure repeatRule column exists for recurring reminders on existing databases
@@ -71,6 +87,12 @@ async function initDatabase(): Promise<SQLite.SQLiteDatabase> {
     const hasVoiceNoteCol = tableInfo.some((col: any) => col.name === 'voiceNoteUri');
     if (!hasVoiceNoteCol) {
       await db.execAsync('ALTER TABLE reminders ADD COLUMN voiceNoteUri TEXT;');
+    }
+
+    const alarmTableInfo = await db.getAllAsync<any>('PRAGMA table_info(alarms);');
+    const hasTargetTimestamp = alarmTableInfo.some((col: any) => col.name === 'targetTimestamp');
+    if (!hasTargetTimestamp) {
+      await db.execAsync('ALTER TABLE alarms ADD COLUMN targetTimestamp INTEGER;');
     }
   } catch (migErr) {
     console.warn('SQLite migration warning:', migErr);

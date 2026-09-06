@@ -90,7 +90,7 @@ const styles = StyleSheet.create({
   container: {
     backgroundColor: Colors.background,
     paddingHorizontal: 16,
-    paddingBottom: Platform.OS === 'ios' ? 24 : 12,
+    paddingBottom: 8,
     paddingTop: 6,
     flexDirection: 'row',
     alignItems: 'center',

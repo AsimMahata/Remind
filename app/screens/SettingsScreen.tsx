@@ -31,7 +31,8 @@ import { countRemindersWithVoiceNotes } from '../database/reminderDao';
 interface SettingsScreenProps {
   settings: AppSettings;
   onUpdateSettings: (newSettings: Partial<AppSettings>) => void;
-  onBack: () => void;
+  onBack?: () => void;
+  showBack?: boolean;
   onRefreshReminders?: () => void;
 }
 
@@ -39,6 +40,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
   settings,
   onUpdateSettings,
   onBack,
+  showBack = false,
   onRefreshReminders,
 }) => {
   const { bottomInset } = useAppInsets();
@@ -142,7 +144,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
     <View style={styles.container}>
       <Header
         title="Settings"
-        showBack={true}
+        showBack={showBack}
         onBack={onBack}
         showSearch={false}
         showMenu={false}
