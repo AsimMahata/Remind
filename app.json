@@ -1,0 +1,49 @@
+{
+  "expo": {
+    "name": "Remind",
+    "slug": "artyu-todo",
+    "owner": "artyusans-team",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "dark",
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#05263B"
+    },
+    "ios": {
+      "supportsTablet": true
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#004184"
+      },
+      "package": "com.remind.app",
+      "permissions": [
+        "RECEIVE_BOOT_COMPLETED",
+        "VIBRATE",
+        "POST_NOTIFICATIONS",
+        "SCHEDULE_EXACT_ALARM"
+      ]
+    },
+    "plugins": [
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/icon.png",
+          "color": "#0078B7",
+          "sounds": []
+        }
+      ],
+      "expo-font",
+      "expo-status-bar"
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "f60e39da-f8f8-4fcf-a073-d00749668db3"
+      }
+    }
+  }
+}
