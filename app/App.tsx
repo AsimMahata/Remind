@@ -7,7 +7,7 @@ import {
 } from 'react-native';
 import { StatusBar as ExpoStatusBar } from 'expo-status-bar';
 
-import { Reminder, AppSettings, DEFAULT_SETTINGS } from './types/reminder';
+import { Reminder, RepeatRule, AppSettings, DEFAULT_SETTINGS } from './types/reminder';
 import { Colors } from './constants/theme';
 import {
   loadRemindersFromStorage,
@@ -286,8 +286,8 @@ export default function App() {
   );
 
   const handleCreateReminder = useCallback(
-    async (taskText: string, dueAt: number) => {
-      const { updatedList } = await createReminder(taskText, dueAt, reminders);
+    async (taskText: string, dueAt: number, repeat?: RepeatRule | null) => {
+      const { updatedList } = await createReminder(taskText, dueAt, reminders, repeat);
       setReminders(updatedList);
     },
     [reminders]

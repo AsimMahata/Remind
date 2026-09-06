@@ -1,3 +1,14 @@
+export type RepeatFrequency = 'none' | 'daily' | 'weekdays' | 'weekly' | 'monthly' | 'custom';
+export type CustomRepeatUnit = 'days' | 'weeks' | 'months';
+
+export interface RepeatRule {
+  frequency: RepeatFrequency;
+  interval?: number; // e.g. 1, 2, 3...
+  unit?: CustomRepeatUnit; // 'days' | 'weeks' | 'months' (when frequency === 'custom')
+  daysOfWeek?: number[]; // [0..6] where 0=Sun, 1=Mon, ..., 6=Sat
+  endDate?: number | null; // Unix timestamp in ms after which repetition stops
+}
+
 export interface Reminder {
   id: string;
   task: string;
@@ -10,6 +21,7 @@ export interface Reminder {
   updatedAt?: number;
   notificationId?: string | null;
   notes?: string;
+  repeat?: RepeatRule | null;
 
   // Synchronization & Isolation fields
   syncStatus?: 'synced' | 'pending' | 'failed';

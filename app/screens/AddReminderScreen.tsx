@@ -16,13 +16,16 @@ import { Colors, Typography } from '../constants/theme';
 import { Header } from '../components/Header';
 import { DatePickerModal } from '../components/DatePickerModal';
 import { TimePickerModal } from '../components/TimePickerModal';
+import { RepeatModal } from '../components/RepeatModal';
 import { speakReminderText } from '../services/tts';
 import { getIntelligentSuggestedTime, getDefaultColdStartTime } from '../services/suggestions';
+import { formatRepeatSummary } from '../services/recurrence';
+import { RepeatRule } from '../types/reminder';
 import { useAppInsets } from '../hooks/useAppInsets';
 
 interface AddReminderScreenProps {
   onBack: () => void;
-  onSaveReminder: (task: string, dueAt: number) => void;
+  onSaveReminder: (task: string, dueAt: number, repeat?: RepeatRule | null) => void;
 }
 
 const MONTH_NAMES = [
@@ -73,6 +76,8 @@ export const AddReminderScreen: React.FC<AddReminderScreenProps> = ({
   // Separate modal states
   const [isDatePickerVisible, setIsDatePickerVisible] = useState(false);
   const [isTimePickerVisible, setIsTimePickerVisible] = useState(false);
+  const [repeatRule, setRepeatRule] = useState<RepeatRule | null>(null);
+  const [isRepeatModalVisible, setIsRepeatModalVisible] = useState(false);
 
   // Format date display
   const formatDateDisplay = (d: Date) => {
@@ -118,7 +123,7 @@ export const AddReminderScreen: React.FC<AddReminderScreenProps> = ({
       // ignore
     }
 
-    onSaveReminder(taskText.trim(), dueDate.getTime());
+    onSaveReminder(taskText.trim(), dueDate.getTime(), repeatRule);
     onBack();
   };
 
@@ -248,6 +253,133 @@ export const AddReminderScreen: React.FC<AddReminderScreenProps> = ({
             </View>
             <Ionicons name="chevron-forward" size={18} color={Colors.textSecondary} />
           </TouchableOpacity>
+        </View>
+
+        {/* Section 3: Repeat / Recurrence Selection */}
+        <View style={styles.cardSection}>
+          <Text style={styles.sectionLabel}>REPEAT</Text>
+          <TouchableOpacity
+            onPress={() => setIsRepeatModalVisible(true)}
+            style={styles.pickerRow}
+            activeOpacity={0.7}
+          >
+            <View style={styles.iconCircle}>
+              <Ionicons
+                name="repeat"
+                size={22}
+                color={Colors.accentCyan}
+              />
+            </View>
+            <View style={styles.pickerInfo}>
+              <Text style={styles.pickerLabel}>Frequency</Text>
+              <Text style={styles.pickerValue}>
+                {formatRepeatSummary(repeatRule, dueDate)}
+              </Text>
+            </View>
+            <Ionicons name="chevron-forward" size={18} color={Colors.textSecondary} />
+          </TouchableOpacity>
+
+          {/* Repeat Quick Presets Chips */}
+          <View style={[styles.chipsRow, { marginTop: 10 }]}>
+            <TouchableOpacity
+              style={[
+                styles.chip,
+                (!repeatRule || repeatRule.frequency === 'none') && styles.chipActive,
+              ]}
+              onPress={() => {
+                try { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); } catch {}
+                setRepeatRule(null);
+              }}
+            >
+              <Text style={[
+                styles.chipText,
+                (!repeatRule || repeatRule.frequency === 'none') && styles.chipTextActive,
+              ]}>
+                Does not repeat
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[
+                styles.chip,
+                repeatRule?.frequency === 'daily' && styles.chipActive,
+              ]}
+              onPress={() => {
+                try { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); } catch {}
+                setRepeatRule({ frequency: 'daily' });
+              }}
+            >
+              <Ionicons
+                name="repeat"
+                size={15}
+                color={repeatRule?.frequency === 'daily' ? '#042236' : Colors.accentCyan}
+              />
+              <Text style={[
+                styles.chipText,
+                repeatRule?.frequency === 'daily' && styles.chipTextActive,
+              ]}>
+                Every day
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[
+                styles.chip,
+                repeatRule?.frequency === 'weekdays' && styles.chipActive,
+              ]}
+              onPress={() => {
+                try { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); } catch {}
+                setRepeatRule({ frequency: 'weekdays', daysOfWeek: [1, 2, 3, 4, 5] });
+              }}
+            >
+              <Text style={[
+                styles.chipText,
+                repeatRule?.frequency === 'weekdays' && styles.chipTextActive,
+              ]}>
+                Weekdays
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[
+                styles.chip,
+                repeatRule?.frequency === 'weekly' && styles.chipActive,
+              ]}
+              onPress={() => {
+                try { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); } catch {}
+                setRepeatRule({ frequency: 'weekly', daysOfWeek: [dueDate.getDay()] });
+              }}
+            >
+              <Text style={[
+                styles.chipText,
+                repeatRule?.frequency === 'weekly' && styles.chipTextActive,
+              ]}>
+                Every week
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[
+                styles.chip,
+                repeatRule?.frequency === 'custom' && styles.chipActive,
+              ]}
+              onPress={() => {
+                setIsRepeatModalVisible(true);
+              }}
+            >
+              <Ionicons
+                name="options-outline"
+                size={15}
+                color={repeatRule?.frequency === 'custom' ? '#042236' : Colors.accentCyan}
+              />
+              <Text style={[
+                styles.chipText,
+                repeatRule?.frequency === 'custom' && styles.chipTextActive,
+              ]}>
+                Custom...
+              </Text>
+            </TouchableOpacity>
+          </View>
         </View>
 
         {/* Intelligent Time Suggestion Card */}
@@ -381,6 +513,17 @@ export const AddReminderScreen: React.FC<AddReminderScreenProps> = ({
           setIsTimePickerVisible(false);
         }}
       />
+
+      {/* Repeat Recurrence Modal */}
+      <RepeatModal
+        visible={isRepeatModalVisible}
+        initialRule={repeatRule}
+        baseDate={dueDate}
+        onClose={() => setIsRepeatModalVisible(false)}
+        onConfirm={(rule) => {
+          setRepeatRule(rule);
+        }}
+      />
     </KeyboardAvoidingView>
   );
 };
@@ -488,11 +631,19 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: Colors.cardBorder,
   },
+  chipActive: {
+    backgroundColor: Colors.accentCyan,
+    borderColor: Colors.accentCyan,
+  },
   chipText: {
     color: Colors.textPrimary,
     fontSize: 13,
     fontWeight: '500',
     marginLeft: 6,
+  },
+  chipTextActive: {
+    color: '#042236',
+    fontWeight: '700',
   },
   infoBanner: {
     flexDirection: 'row',

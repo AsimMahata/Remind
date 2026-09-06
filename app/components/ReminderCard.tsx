@@ -10,6 +10,7 @@ import * as Haptics from 'expo-haptics';
 import { Reminder } from '../types/reminder';
 import { Colors } from '../constants/theme';
 import { formatReminderDateTime } from '../services/reminders';
+import { formatRepeatSummary } from '../services/recurrence';
 import { speakReminderText } from '../services/tts';
 
 interface ReminderCardProps {
@@ -149,6 +150,31 @@ export const ReminderCard: React.FC<ReminderCardProps> = ({
           >
             {formattedText}
           </Text>
+
+          {reminder.repeat && reminder.repeat.frequency !== 'none' && (
+            <View
+              style={[
+                styles.repeatBadge,
+                reminder.completed && styles.repeatBadgeCompleted,
+              ]}
+            >
+              <Ionicons
+                name="repeat"
+                size={12}
+                color={reminder.completed ? Colors.textDisabled : Colors.accentCyan}
+                style={{ marginRight: 3 }}
+              />
+              <Text
+                style={[
+                  styles.repeatBadgeText,
+                  reminder.completed && styles.repeatBadgeTextCompleted,
+                ]}
+                numberOfLines={1}
+              >
+                {formatRepeatSummary(reminder.repeat, new Date(reminder.dueAt))}
+              </Text>
+            </View>
+          )}
         </View>
       </View>
 
@@ -273,6 +299,7 @@ const styles = StyleSheet.create({
   dueBadgeRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    flexWrap: 'wrap',
   },
   dueText: {
     fontSize: 13,
@@ -284,6 +311,26 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   dueTextCompleted: {
+    color: Colors.textDisabled,
+  },
+  repeatBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(79, 195, 247, 0.12)',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+    marginLeft: 8,
+  },
+  repeatBadgeCompleted: {
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+  },
+  repeatBadgeText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: Colors.accentCyan,
+  },
+  repeatBadgeTextCompleted: {
     color: Colors.textDisabled,
   },
   actionsContainer: {

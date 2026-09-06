@@ -11,6 +11,7 @@ export interface IReminder extends Document {
   deletedAt?: number | null;
   notes?: string;
   notificationId?: string | null;
+  repeat?: any;
   version: number;
   createdAt: number;
   updatedAt: number;
@@ -28,6 +29,7 @@ const ReminderSchema = new Schema<IReminder>(
     deletedAt: { type: Number, default: null },
     notes: { type: String, default: '' },
     notificationId: { type: String, default: null },
+    repeat: { type: Schema.Types.Mixed, default: null },
     version: { type: Number, default: 1 },
     createdAt: { type: Number, default: () => Date.now() },
     updatedAt: { type: Number, default: () => Date.now(), index: true },

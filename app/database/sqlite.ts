@@ -27,6 +27,7 @@ export async function getDatabase(): Promise<SQLite.SQLiteDatabase> {
       deletedAt INTEGER,
       notes TEXT DEFAULT '',
       notificationId TEXT,
+      repeatRule TEXT,
       version INTEGER DEFAULT 1,
       createdAt INTEGER NOT NULL,
       updatedAt INTEGER NOT NULL,
@@ -55,6 +56,17 @@ export async function getDatabase(): Promise<SQLite.SQLiteDatabase> {
       value TEXT
     );
   `);
+
+  // Migration check: ensure repeatRule column exists for recurring reminders on existing databases
+  try {
+    const tableInfo = await dbInstance.getAllAsync<any>('PRAGMA table_info(reminders);');
+    const hasRepeatCol = tableInfo.some((col: any) => col.name === 'repeatRule');
+    if (!hasRepeatCol) {
+      await dbInstance.execAsync('ALTER TABLE reminders ADD COLUMN repeatRule TEXT;');
+    }
+  } catch (migErr) {
+    console.warn('SQLite migration warning (repeatRule):', migErr);
+  }
 
   return dbInstance;
 }

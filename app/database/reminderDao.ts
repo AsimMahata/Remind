@@ -6,6 +6,15 @@ import { SyncQueueItem, SyncOperationType } from '../types/sync';
  * Map raw SQLite row to typed Reminder object
  */
 function rowToReminder(row: any): Reminder {
+  let repeat = null;
+  if (row.repeatRule) {
+    try {
+      repeat = typeof row.repeatRule === 'string' ? JSON.parse(row.repeatRule) : row.repeatRule;
+    } catch {
+      repeat = null;
+    }
+  }
+
   return {
     id: row.id,
     userId: row.userId || null,
@@ -17,6 +26,7 @@ function rowToReminder(row: any): Reminder {
     deletedAt: row.deletedAt ? Number(row.deletedAt) : null,
     notes: row.notes || '',
     notificationId: row.notificationId || null,
+    repeat,
     version: Number(row.version || 1),
     createdAt: Number(row.createdAt),
     updatedAt: Number(row.updatedAt),
@@ -73,8 +83,8 @@ export async function upsertReminder(
   await db.runAsync(
     `INSERT INTO reminders (
       id, userId, task, dueAt, completed, completedAt, deleted, deletedAt,
-      notes, notificationId, version, createdAt, updatedAt, syncStatus, serverUpdatedAt
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      notes, notificationId, repeatRule, version, createdAt, updatedAt, syncStatus, serverUpdatedAt
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(id) DO UPDATE SET
       userId = COALESCE(excluded.userId, reminders.userId),
       task = excluded.task,
@@ -85,6 +95,7 @@ export async function upsertReminder(
       deletedAt = excluded.deletedAt,
       notes = excluded.notes,
       notificationId = excluded.notificationId,
+      repeatRule = excluded.repeatRule,
       version = excluded.version,
       updatedAt = excluded.updatedAt,
       syncStatus = excluded.syncStatus,
@@ -100,6 +111,7 @@ export async function upsertReminder(
       reminder.deletedAt || null,
       reminder.notes || '',
       reminder.notificationId || null,
+      reminder.repeat ? JSON.stringify(reminder.repeat) : null,
       reminder.version || 1,
       createdAt,
       updatedAt,

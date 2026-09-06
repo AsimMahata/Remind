@@ -17,7 +17,7 @@ router.get('/', async (req: Request, res: Response): Promise<void> => {
     const userId = req.user!.id;
     const reminders = await Reminder.find({ userId, deleted: false })
       .sort({ dueAt: 1 })
-      .select('-_id id userId task dueAt completed completedAt notes notificationId version createdAt updatedAt')
+      .select('-_id id userId task dueAt completed completedAt notes notificationId repeat version createdAt updatedAt')
       .lean();
 
     res.json(reminders);
@@ -34,7 +34,7 @@ router.get('/', async (req: Request, res: Response): Promise<void> => {
 router.post('/', async (req: Request, res: Response): Promise<void> => {
   try {
     const userId = req.user!.id;
-    const { id, task, dueAt, notes, notificationId } = req.body;
+    const { id, task, dueAt, notes, notificationId, repeat } = req.body;
 
     if (!task || !dueAt) {
       res.status(400).json({ error: 'Task and dueAt are required' });
@@ -52,6 +52,7 @@ router.post('/', async (req: Request, res: Response): Promise<void> => {
       completed: false,
       notes: notes || '',
       notificationId: notificationId || null,
+      repeat: repeat || null,
       version: 1,
       createdAt: now,
       updatedAt: now,
@@ -94,6 +95,7 @@ router.put('/:id', async (req: Request, res: Response): Promise<void> => {
       reminder.completedAt = updates.completed ? Date.now() : null;
     }
     if (updates.notes !== undefined) reminder.notes = updates.notes;
+    if (updates.repeat !== undefined) reminder.repeat = updates.repeat;
     if (updates.notificationId !== undefined) {
       reminder.notificationId = updates.notificationId ? String(updates.notificationId) : null;
     }
@@ -181,7 +183,7 @@ router.get('/trash', async (req: Request, res: Response): Promise<void> => {
     const userId = req.user!.id;
     const deletedReminders = await Reminder.find({ userId, deleted: true })
       .sort({ deletedAt: -1 })
-      .select('-_id id userId task dueAt completed completedAt deleted deletedAt notes notificationId version createdAt updatedAt')
+      .select('-_id id userId task dueAt completed completedAt deleted deletedAt notes notificationId repeat version createdAt updatedAt')
       .lean();
 
     res.json(deletedReminders);

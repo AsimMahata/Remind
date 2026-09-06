@@ -1,9 +1,10 @@
-import { Reminder, ReminderSection } from '../types/reminder';
+import { Reminder, ReminderSection, RepeatRule } from '../types/reminder';
 import { Colors } from '../constants/theme';
 import {
   scheduleReminderNotification,
   cancelReminderNotification,
 } from './notifications';
+import { calculateNextOccurrence } from './recurrence';
 import { recordUsedTime } from './suggestions';
 import {
   getActiveReminders,
@@ -169,7 +170,8 @@ export async function loadActiveRemindersFromDb(): Promise<Reminder[]> {
 export async function createReminder(
   task: string,
   dueAt: number,
-  allReminders: Reminder[]
+  allReminders: Reminder[],
+  repeat?: RepeatRule | null
 ): Promise<{ updatedList: Reminder[]; newReminder: Reminder }> {
   const authState = getAuthState();
   const now = Date.now();
@@ -183,6 +185,7 @@ export async function createReminder(
     completedAt: null,
     deleted: false,
     deletedAt: null,
+    repeat: repeat || null,
     createdAt: now,
     updatedAt: now,
     syncStatus: 'pending',
@@ -207,13 +210,77 @@ export async function createReminder(
 }
 
 /**
- * Toggle completion status
+ * Toggle completion status.
+ * If the reminder has a repeat rule and is being marked complete,
+ * this calculates the next occurrence, advances the reminder, archives a completed
+ * instance for history, and reschedules the notification.
  */
 export async function toggleReminderCompletion(
   id: string,
   allReminders: Reminder[]
 ): Promise<Reminder[]> {
   const now = Date.now();
+  const target = allReminders.find((r) => r.id === id);
+
+  if (!target) return allReminders;
+
+  // 1. Handling recurring reminder completion: advance to next occurrence
+  if (!target.completed && target.repeat && target.repeat.frequency !== 'none') {
+    const nextDueAt = calculateNextOccurrence(target.dueAt, target.repeat);
+
+    if (nextDueAt !== null) {
+      // Cancel old notification
+      if (target.notificationId) {
+        await cancelReminderNotification(target.notificationId);
+      }
+
+      // Create an archived completed entry for task history
+      const completedRecord: Reminder = {
+        id: `remind_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+        userId: target.userId || null,
+        task: target.task,
+        dueAt: target.dueAt,
+        completed: true,
+        completedAt: now,
+        deleted: false,
+        deletedAt: null,
+        createdAt: target.createdAt,
+        updatedAt: now,
+        notes: target.notes || '',
+        notificationId: null,
+        repeat: null, // Archived entry does not repeat
+        version: 1,
+        syncStatus: 'pending',
+      };
+
+      // Advance the recurring task's due date to the next occurrence
+      const updatedRecurring: Reminder = {
+        ...target,
+        dueAt: nextDueAt,
+        completed: false,
+        completedAt: null,
+        updatedAt: now,
+        version: (target.version || 1) + 1,
+        syncStatus: 'pending',
+      };
+
+      // Reschedule future notification
+      const newNotifId = await scheduleReminderNotification(updatedRecurring);
+      updatedRecurring.notificationId = newNotifId;
+
+      // Save both to local SQLite & trigger sync
+      await upsertReminder(completedRecord, true);
+      await upsertReminder(updatedRecurring, true);
+      triggerSync();
+
+      return [
+        completedRecord,
+        ...allReminders.map((r) => (r.id === id ? updatedRecurring : r)),
+      ];
+    }
+  }
+
+  // 2. Standard single occurrence toggle
   let updatedItem: Reminder | null = null;
 
   const updatedList = await Promise.all(
@@ -336,7 +403,11 @@ export async function updateReminder(
           version: (r.version || 1) + 1,
         };
 
-        if (updates.dueAt !== undefined || updates.completed !== undefined) {
+        if (
+          updates.dueAt !== undefined ||
+          updates.completed !== undefined ||
+          updates.repeat !== undefined
+        ) {
           if (r.notificationId) {
             await cancelReminderNotification(r.notificationId);
             merged.notificationId = null;

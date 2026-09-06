@@ -17,6 +17,7 @@ export interface ClientSyncChange {
     deletedAt?: number | null;
     notes?: string;
     notificationId?: string | null;
+    repeat?: any;
     createdAt?: number;
     updatedAt?: number;
     version?: number;
@@ -58,6 +59,7 @@ async function processPushChanges(
             existing.deleted = !!data.deleted;
             existing.deletedAt = data.deletedAt || null;
             existing.notes = data.notes || '';
+            if (data.repeat !== undefined) existing.repeat = data.repeat;
             existing.updatedAt = clientUpdatedAt;
             existing.version = (existing.version || 1) + 1;
             await existing.save();
@@ -75,6 +77,7 @@ async function processPushChanges(
             deletedAt: data.deletedAt || null,
             notes: data.notes || '',
             notificationId: data.notificationId || null,
+            repeat: data.repeat || null,
             version: data.version || 1,
             createdAt: clientCreatedAt,
             updatedAt: clientUpdatedAt,
@@ -103,6 +106,7 @@ async function processPushChanges(
               deletedAt: data.deletedAt || null,
               notes: data.notes || '',
               notificationId: data.notificationId || null,
+              repeat: data.repeat || null,
               version: data.version || 1,
               createdAt: clientCreatedAt,
               updatedAt: clientUpdatedAt,
@@ -126,6 +130,7 @@ async function processPushChanges(
             existing.completedAt = data.completed ? (data.completedAt || Date.now()) : null;
           }
           if (data.notes !== undefined) existing.notes = data.notes;
+          if (data.repeat !== undefined) existing.repeat = data.repeat;
           if (data.deleted !== undefined) existing.deleted = data.deleted;
           if (data.deletedAt !== undefined) existing.deletedAt = data.deletedAt;
 
@@ -213,7 +218,7 @@ router.post('/', requireAuth, async (req: Request, res: Response): Promise<void>
       userId,
       updatedAt: { $gt: lastSyncTimestamp },
     })
-      .select('-_id id userId task dueAt completed completedAt deleted deletedAt notes notificationId version createdAt updatedAt')
+      .select('-_id id userId task dueAt completed completedAt deleted deletedAt notes notificationId repeat version createdAt updatedAt')
       .lean();
 
     const serverTimestamp = Date.now();
@@ -274,7 +279,7 @@ router.post('/pull', requireAuth, async (req: Request, res: Response): Promise<v
       userId,
       updatedAt: { $gt: lastSyncTimestamp },
     })
-      .select('-_id id userId task dueAt completed completedAt deleted deletedAt notes notificationId version createdAt updatedAt')
+      .select('-_id id userId task dueAt completed completedAt deleted deletedAt notes notificationId repeat version createdAt updatedAt')
       .lean();
 
     res.json({

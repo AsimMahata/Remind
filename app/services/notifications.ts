@@ -133,6 +133,40 @@ export async function scheduleReminderNotification(reminder: Reminder): Promise<
       await cancelReminderNotification(reminder.notificationId);
     }
 
+    const notificationData: Record<string, any> = {
+      reminderId: reminder.id,
+      task: reminder.task,
+      dueAt: reminder.dueAt,
+    };
+
+    if (reminder.repeat) {
+      notificationData.repeat = JSON.stringify(reminder.repeat);
+    }
+
+    let triggerInput: any;
+    if (reminder.repeat?.frequency === 'daily') {
+      triggerInput = {
+        type: SchedulableTriggerInputTypes.DAILY,
+        hour: triggerDate.getHours(),
+        minute: triggerDate.getMinutes(),
+        ...(hasChannelSupport ? { channelId: ANDROID_CHANNEL_ID } : {}),
+      };
+    } else if (reminder.repeat?.frequency === 'weekly') {
+      triggerInput = {
+        type: SchedulableTriggerInputTypes.WEEKLY,
+        weekday: triggerDate.getDay() + 1, // Expo uses 1 for Sunday, 7 for Saturday
+        hour: triggerDate.getHours(),
+        minute: triggerDate.getMinutes(),
+        ...(hasChannelSupport ? { channelId: ANDROID_CHANNEL_ID } : {}),
+      };
+    } else {
+      triggerInput = {
+        type: SchedulableTriggerInputTypes.DATE,
+        date: triggerDate,
+        ...(hasChannelSupport ? { channelId: ANDROID_CHANNEL_ID } : {}),
+      };
+    }
+
     const notificationId = await scheduleNotificationAsync({
       content: {
         title: 'Remind',
@@ -143,17 +177,9 @@ export async function scheduleReminderNotification(reminder: Reminder): Promise<
         priority: AndroidNotificationPriority.MAX,
         vibrate: [0, 250, 250, 250],
         autoDismiss: true,
-        data: {
-          reminderId: reminder.id,
-          task: reminder.task,
-          dueAt: reminder.dueAt,
-        },
+        data: notificationData,
       },
-      trigger: {
-        type: SchedulableTriggerInputTypes.DATE,
-        date: triggerDate,
-        ...(hasChannelSupport ? { channelId: ANDROID_CHANNEL_ID } : {}),
-      },
+      trigger: triggerInput,
     });
 
     return notificationId;
