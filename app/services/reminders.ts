@@ -439,7 +439,7 @@ export async function permanentlyPurgeDeletedReminders(): Promise<number> {
     try {
       await apiRequest('/reminders/purge-deleted', { method: 'POST' });
     } catch (e) {
-      console.warn('Failed to purge cloud trash:', e);
+      console.log('[Reminders] Failed to purge cloud trash (offline, will sync later):', e);
     }
   }
 

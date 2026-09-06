@@ -149,13 +149,15 @@ export async function performSync(): Promise<boolean> {
 
     return true;
   } catch (err: any) {
-    console.warn('[SyncEngine] Sync failed or offline:', err.message);
+    // In an offline-first app, network delays or offline states are normal, expected occurrences.
+    // We log as informational debug instead of console.warn to avoid intrusive React Native LogBox toasts.
+    console.log('[SyncEngine] Sync paused (offline or server unreachable):', err.message);
     setStatus('offline');
 
     // Record failure in queue items
     const queue = await getPendingSyncQueue();
     for (const item of queue) {
-      await updateSyncQueueFailure(item.id, err.message || 'Network error');
+      await updateSyncQueueFailure(item.id, err.message || 'Offline mode');
     }
 
     // Schedule backoff retry in 15 seconds if authenticated

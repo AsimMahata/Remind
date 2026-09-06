@@ -60,7 +60,16 @@ const candidatePaths = [
 const adminStaticPath = candidatePaths.find((p) => fs.existsSync(p)) || candidatePaths[0];
 app.use('/admin', express.static(adminStaticPath));
 
-// Health check
+// Root and Health check
+app.get('/', (req: Request, res: Response) => {
+  res.json({
+    status: 'ok',
+    message: 'Remind Backend API is running',
+    environment: ENV.NODE_ENV,
+    timestamp: Date.now(),
+  });
+});
+
 app.get('/health', (req: Request, res: Response) => {
   res.json({
     status: 'ok',
@@ -95,18 +104,27 @@ app.use((err: any, req: Request, res: Response, next: NextFunction) => {
 
 // Connect to MongoDB and start server
 async function startServer() {
-  await connectDB();
+  try {
+    console.log('[Startup] Connecting to MongoDB before opening server...');
+    await connectDB();
 
-  // Listen on 0.0.0.0 so physical phones and external devices on LAN can connect
-  app.listen(ENV.PORT, '0.0.0.0', () => {
-    console.log(`=========================================`);
-    console.log(`🚀 Remind Backend running on port: ${ENV.PORT}`);
-    console.log(`🌐 Local Network (Phone): http://10.2.30.157:${ENV.PORT}`);
-    console.log(`📡 Localhost: http://localhost:${ENV.PORT}`);
-    console.log(`🛡️  Admin Dashboard: http://localhost:${ENV.PORT}/admin`);
-    console.log(`📝 Full HTTP request logging enabled.`);
-    console.log(`=========================================`);
-  });
+    // Only start listening AFTER database is successfully connected
+    app.listen(ENV.PORT, '0.0.0.0', () => {
+      console.log(`=========================================`);
+      console.log(`🚀 Remind Backend running on port: ${ENV.PORT}`);
+      console.log(`🌐 Local Network (Phone): http://10.2.30.157:${ENV.PORT}`);
+      console.log(`📡 Localhost: http://localhost:${ENV.PORT}`);
+      console.log(`🛡️  Admin Dashboard: http://localhost:${ENV.PORT}/admin`);
+      console.log(`📝 Full HTTP request logging enabled.`);
+      console.log(`=========================================`);
+    });
+  } catch (error: any) {
+    console.error(`=========================================`);
+    console.error(`❌ FATAL: Could not connect to MongoDB.`);
+    console.error(`Server startup aborted. Reason: ${error?.message || error}`);
+    console.error(`=========================================`);
+    process.exit(1);
+  }
 }
 
 startServer();

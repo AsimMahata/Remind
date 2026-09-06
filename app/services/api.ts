@@ -73,7 +73,15 @@ export async function apiRequest<T = any>(
   } catch (err: any) {
     clearTimeout(timeoutId);
     if (err.name === 'AbortError' || err.message?.includes('canceled') || err.message?.includes('aborted')) {
-      throw new Error(`Timeout reaching ${url}. Check server is running at ${API_CONFIG.BASE_URL}`);
+      const error = new Error('Server connection timed out. Changes are saved locally.');
+      (error as any).isTimeout = true;
+      (error as any).isOffline = true;
+      throw error;
+    }
+    if (err.message?.includes('Network request failed') || err.message?.includes('Failed to fetch')) {
+      const error = new Error('Unable to reach cloud server. Working in offline mode.');
+      (error as any).isOffline = true;
+      throw error;
     }
     throw err;
   }

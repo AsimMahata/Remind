@@ -1,109 +1,211 @@
-# Remind - Minimal Android Reminder App
+# ⏰ Remind — Offline-First Smart Reminder System
 
-A minimal, fast, offline-first Android reminder app built with **React Native + Expo**, **TypeScript**, **AsyncStorage**, **Expo Notifications**, and **Android Text-to-Speech (TTS)**.
-
----
-
-## 📱 Features
-
-- **Android-First Visual Language**: Deep navy background (`#042236`), bright blue top app bar (`#0078B7`), clean card layouts, large readable typography, and floating action button.
-- **Sectioned List**:
-  - **Overdue** (coral red highlight)
-  - **Today** (cyan highlight)
-  - **Upcoming** (sky blue highlight)
-  - **Completed** (strikethrough & archive)
-- **Local Persistence**: Reminders & settings persist across app restarts using AsyncStorage.
-- **Instantaneous Search**: Live keyword search filtering through your tasks instantly.
-- **Local Notifications**: Scheduled at exact reminder time with Android Notification Channel.
-- **Notification Actions**:
-  - `[✓ FINISH]`: Completes reminder immediately.
-  - `[⏳ +15 MIN]`: Postpones reminder by 15 minutes.
-  - `[⏰ +1 HOUR]`: Postpones reminder by 1 hour.
-- **Postpone Flow**: Easily postpone tasks for 15 min, 30 min, 1 hour, tomorrow morning (9 AM), or custom date & time.
-- **Voice Reminders (TTS)**: Spoken reminder aloud using system Text-to-Speech (`"Reminder. <Task text>"`).
-- **Quick Task Bar**: Fast input line with mic button and FAB at the bottom.
-- **Zero Cloud / Backend**: Completely private and offline-first.
+A high-performance, offline-first reminder application built for Android with a **React Native (Expo)** mobile client, local **SQLite** storage, and a **Node.js + Express + TypeScript** cloud sync backend backed by **MongoDB Atlas**.
 
 ---
 
-## 🛠️ Project Structure
+## 🌟 Highlights & Architecture
+
+- **100% Offline-First**: Instant UI responses. All reminders are written directly to local SQLite database first. Works completely without internet or server connectivity.
+- **Bi-Directional Cloud Sync**: Automatically pushes local changes and pulls updates using timestamped delta sync and revision conflict resolution.
+- **Non-Intrusive Offline UX**: Zero annoying alert modals or warning banners on network loss. Sync retries quietly in the background with exponential backoff.
+- **Account & Guest Mode**: Use the app completely anonymously without an account. When signing in, local reminders can be seamlessly migrated to your cloud profile.
+- **Smart Time Suggestions**: Learns your habits over time to suggest intelligent reminder times based on your historical task scheduling patterns.
+- **Voice TTS Announcements**: Speaks reminders aloud when triggered using system Text-to-Speech (`"Reminder: <Task Name>"`).
+- **Interactive Actionable Notifications**:
+  - `[✓ FINISH]`: Complete reminder directly from Android notification shade.
+  - `[⏳ +15 MIN]`: Snooze by 15 minutes.
+  - `[⏰ +1 HOUR]`: Snooze by 1 hour.
+- **Built-in Trash & Recovery**: Soft deletion protects against accidental data loss. Recover or permanently purge items anytime.
+- **Admin Dashboard**: Web dashboard for viewing system health, active users, sync metrics, and audit event logs.
+
+```
+                    ┌───────────────────────────────┐
+                    │    Android Device (Mobile)    │
+                    │  React Native / Expo + SQLite │
+                    └───────────────┬───────────────┘
+                                    │
+                         HTTPS / JSON Delta Sync
+                                    │
+                                    ▼
+                    ┌───────────────────────────────┐
+                    │   Cloud Backend (Node / TS)   │
+                    │      Hosted on Render         │
+                    └───────────────┬───────────────┘
+                                    │
+                                    ▼
+                    ┌───────────────────────────────┐
+                    │     MongoDB Atlas (Cloud)     │
+                    │   Users, Reminders & Events   │
+                    └───────────────────────────────┘
+```
+
+---
+
+## 📁 Repository Structure
 
 ```
 todo-list/
-├── App.tsx                      # Root component & screen router
-├── app.json                     # Expo configuration & Android permissions
-├── package.json                 # Dependencies & scripts
-├── tsconfig.json                # TypeScript configuration
-├── constants/
-│   └── theme.ts                 # Colors, typography & layout constants
-├── types/
-│   └── reminder.ts              # Reminder, Section & Settings data types
-├── services/
-│   ├── storage.ts               # AsyncStorage local persistence
-│   ├── tts.ts                   # Android Text-to-Speech service
-│   ├── notifications.ts         # Expo local notification scheduling & actions
-│   └── reminders.ts             # Core business logic & section organizer
-├── components/
-│   ├── Header.tsx               # Android top app bar with actions & menu
-│   ├── ReminderCard.tsx         # Task card with checkbox, badge, speak & snooze
-│   ├── QuickTaskBar.tsx         # Bottom quick input & circular FAB
-│   ├── DateTimePickerModal.tsx  # Android Date & Time picker dialog
-│   ├── PostponeModal.tsx        # Postpone modal dialog
-│   └── MenuDropdown.tsx         # 3-dots overflow action menu
-└── screens/
-    ├── HomeScreen.tsx           # Main reminders screen with search & sections
-    ├── AddReminderScreen.tsx    # "New Task" creation screen
-    └── SettingsScreen.tsx       # Notifications, Voice TTS & app preferences
+├── app/                           # Mobile Application (React Native / Expo)
+│   ├── App.tsx                    # Root component, router & life-cycle
+│   ├── database/
+│   │   ├── sqlite.ts              # SQLite database schema & migrations
+│   │   └── reminderDao.ts         # DAO layer for local persistence & queues
+│   ├── services/
+│   │   ├── sync.ts                # Offline-first background sync engine
+│   │   ├── api.ts                 # Universal API client with error abstraction
+│   │   ├── auth.ts                # Client-side JWT auth & token storage
+│   │   ├── notifications.ts       # Android notification channels & actions
+│   │   ├── tts.ts                 # Text-to-Speech voice reminders
+│   │   └── reminders.ts           # Core business logic & status organization
+│   ├── screens/
+│   │   ├── HomeScreen.tsx         # Sectioned task list, quick add & search
+│   │   ├── AddReminderScreen.tsx  # Reminder creation with time suggestions
+│   │   ├── EditReminderScreen.tsx # Reminder editing & details
+│   │   └── SettingsScreen.tsx     # Cloud sync status, account & voice settings
+│   └── components/                # Reusable UI components & modals
+│
+└── backend/                       # Cloud Backend (Node.js + Express + TypeScript)
+    ├── src/
+    │   ├── server.ts              # Express app setup & graceful startup
+    │   ├── config/
+    │   │   ├── db.ts              # Mongoose MongoDB connection
+    │   │   └── env.ts             # Environment variable validation
+    │   ├── models/                # Mongoose models (User, Reminder, Event)
+    │   ├── routes/
+    │   │   ├── auth.ts            # Register, Login & Profile routes
+    │   │   ├── sync.ts            # Delta sync engine endpoint
+    │   │   ├── reminders.ts       # CRUD endpoints for reminders
+    │   │   └── admin.ts           # Admin dashboard API & metrics
+    │   └── public/admin/          # Static admin dashboard web application
+    └── dist/                      # Compiled production JavaScript
 ```
 
 ---
 
-## 🚀 How to Run
+## 🚀 Getting Started
 
-Run the following commands in your terminal from this directory:
-
-### 1. Install Dependencies
-```bash
-npm install
-```
-
-### 2. Start Expo Development Server
-```bash
-npx expo start
-```
-
-### 3. Running on Android
-- **Android Device**: Scan the QR code using the **Expo Go** app on your Android phone.
-- **Android Emulator**: Press `a` in the terminal.
-- **Web Preview**: Press `w` in the terminal to view on your browser.
+### Prerequisites
+- **Node.js** (v18 or v20 recommended)
+- **npm**
+- **Expo Go** app on your Android device (or an Android Emulator)
+- Free **MongoDB Atlas** account (or local MongoDB)
 
 ---
 
-## 📦 Building Standalone Android APK
+### 1. Backend Setup & Local Development
 
-You can build a standalone `.apk` to install directly on any Android phone (no Expo Go required):
+1. Navigate to the backend directory:
+   ```bash
+   cd backend
+   ```
+2. Install dependencies:
+   ```bash
+   npm install
+   ```
+3. Create your `.env` file (copy from `.env.example`):
+   ```env
+   PORT=5000
+   NODE_ENV=development
+   MONGODB_URI=mongodb+srv://<user>:<password>@cluster0.xxxxx.mongodb.net/remind?retryWrites=true&w=majority
+   JWT_SECRET=your_super_secret_jwt_key_here
+   CORS_ORIGIN=*
+   ADMIN_EMAIL=admin@remind.local
+   ADMIN_PASSWORD=YourAdminPassword123!
+   ```
+4. Start development server with auto-reload:
+   ```bash
+   npm run dev
+   ```
+   *The server will verify the MongoDB connection before opening port 5000.*
 
-### 1. Build and Automatically Save as `remind.apk`
-Builds on EAS cloud and automatically downloads the finished APK directly to your project folder as `remind.apk`:
+5. Open the Admin Dashboard:
+   Navigate to `http://localhost:5000/admin` in your browser.
+
+---
+
+### 2. Mobile App Setup (Expo)
+
+1. Navigate to the app directory:
+   ```bash
+   cd app
+   ```
+2. Install dependencies:
+   ```bash
+   npm install
+   ```
+3. Configure your API URL in `app/.env`:
+   - **For Cloud Backend (e.g. Render):**
+     ```env
+     EXPO_PUBLIC_API_URL=https://remind-nc2b.onrender.com
+     ```
+   - **For Local Development (Physical Android Device):**
+     ```env
+     EXPO_PUBLIC_API_URL=http://<YOUR_LOCAL_LAN_IP>:5000
+     ```
+   - **For Android Emulator:**
+     ```env
+     EXPO_PUBLIC_API_URL=http://10.0.2.2:5000
+     ```
+4. Start Expo:
+   ```bash
+   npx expo start -c
+   ```
+5. Run on your device:
+   - **Physical Phone**: Scan the displayed terminal QR code using **Expo Go**.
+   - **Emulator**: Press `a` in the terminal.
+
+---
+
+## ☁️ Hosting the Backend (Render)
+
+The backend is pre-configured for zero-friction cloud deployment on [Render](https://render.com) without requiring a GitHub login:
+
+1. **Sign up on Render**: Register at [render.com](https://render.com) using your **Email**.
+2. **Create Web Service**:
+   - Select **Public Git repository** and paste your repository URL.
+   - **Root Directory**: `backend`
+   - **Build Command**: `npm install && npm run build`
+   - **Start Command**: `npm start`
+3. **Set Environment Variables in Render**:
+   - `NODE_ENV`: `production`
+   - `MONGODB_URI`: `mongodb+srv://<username>:<password>@cluster0.xxxxx.mongodb.net/remind?retryWrites=true&w=majority`
+   - `JWT_SECRET`: `a_strong_random_secret_string`
+   - `CORS_ORIGIN`: `*`
+4. **MongoDB Atlas IP Access**:
+   - In [cloud.mongodb.com](https://cloud.mongodb.com) > **Network Access**, ensure `0.0.0.0/0` ("Allow Access from Anywhere") is added so Render can communicate with your database.
+
+---
+
+## 📦 Standalone Android APK Build (EAS)
+
+You can build a standalone release APK that installs on any Android phone without needing Expo Go:
+
 ```bash
+# Build and save APK directly to current folder
 npx eas-cli build --platform android --profile preview --output ./remind.apk
 ```
 
-### 2. Standard Cloud Build
-Builds on EAS cloud and gives you a QR code and web link to download:
-```bash
-npx eas-cli build --platform android --profile preview
-```
+---
 
-### 3. Download Latest Completed Build as `remind.apk`
-If the build is already finished on Expo servers, download it directly without rebuilding:
-```bash
-npx eas-cli build:download --platform android --profile preview --output ./remind.apk
-```
+## 📡 API Endpoints Overview
 
-### 4. Check Project Health
-Verify configuration and dependencies before building:
-```bash
-npx expo-doctor
-```
+| Method | Endpoint | Description | Auth Required |
+|---|---|---|---|
+| `GET` | `/` | Service health status | No |
+| `GET` | `/health` | Server environment & timestamp | No |
+| `POST` | `/auth/register` | Create a new user account | No |
+| `POST` | `/auth/login` | Log in and receive JWT token | No |
+| `GET` | `/auth/me` | Fetch authenticated user profile | Yes |
+| `POST` | `/sync` | Bi-directional delta sync | Yes |
+| `GET` | `/reminders` | Fetch all user reminders | Yes |
+| `POST` | `/reminders` | Create reminder | Yes |
+| `PATCH`| `/reminders/:id` | Update reminder | Yes |
+| `DELETE`| `/reminders/:id` | Soft-delete reminder | Yes |
+| `POST` | `/reminders/purge-deleted` | Permanently empty trash | Yes |
+| `GET` | `/admin` | Web-based visual dashboard | Yes (Admin) |
 
+---
+
+## 📄 License
+MIT License. Created for the **Remind** Project.

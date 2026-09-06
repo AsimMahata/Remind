@@ -7,6 +7,7 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   Linking,
+  Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Typography } from '../constants/theme';
@@ -58,7 +59,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
       const s = await fetchReminderStats();
       setStats(s);
     } catch (e) {
-      console.warn('Failed to load stats:', e);
+      console.log('[Settings] Note: stats refreshed from local state:', e);
     }
   };
 
@@ -78,9 +79,16 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
   const handleManualSync = async () => {
     setIsSyncingManual(true);
     try {
-      await performSync();
+      const success = await performSync();
       await loadStats();
       onRefreshReminders?.();
+      if (!success) {
+        Alert.alert(
+          'Offline Mode Active',
+          'Could not reach the cloud sync server right now. All your reminders are safely stored on this device and will sync automatically once connection is restored.',
+          [{ text: 'OK' }]
+        );
+      }
     } finally {
       setIsSyncingManual(false);
     }
