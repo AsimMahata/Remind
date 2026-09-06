@@ -14,6 +14,10 @@ import {
   AndroidImportance,
   AndroidNotificationVisibility,
 } from 'expo-notifications/build/NotificationChannelManager.types';
+import {
+  AndroidNotificationPriority,
+  SchedulableTriggerInputTypes,
+} from 'expo-notifications/build/Notifications.types';
 
 import { Reminder } from '../types/reminder';
 import { loadSettingsFromStorage } from './storage';
@@ -135,24 +139,21 @@ export async function scheduleReminderNotification(reminder: Reminder): Promise<
         body: reminder.task,
         sound: 'default',
         categoryIdentifier: REMINDER_CATEGORY_ID,
+        color: '#0078B7',
+        priority: AndroidNotificationPriority.MAX,
+        vibrate: [0, 250, 250, 250],
+        autoDismiss: true,
         data: {
           reminderId: reminder.id,
           task: reminder.task,
           dueAt: reminder.dueAt,
         },
-        android: {
-          color: '#0078B7',
-          priority: 'max',
-          vibrate: [0, 250, 250, 250],
-          autoDismiss: true,
-          ...(hasChannelSupport ? { channelId: ANDROID_CHANNEL_ID } : {}),
-        },
       },
       trigger: {
-        type: 'date',
+        type: SchedulableTriggerInputTypes.DATE,
         date: triggerDate,
         ...(hasChannelSupport ? { channelId: ANDROID_CHANNEL_ID } : {}),
-      } as any,
+      },
     });
 
     return notificationId;
@@ -212,7 +213,7 @@ export function registerNotificationListeners(
       console.warn('Failed to dismiss notification:', e);
     }
 
-    if (!reminderId) return;
+    if (typeof reminderId !== 'string' || !reminderId) return;
 
     if (actionId === ACTION_IDENTIFIERS.FINISH) {
       onFinishTask(reminderId);
