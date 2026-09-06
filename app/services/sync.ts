@@ -146,10 +146,13 @@ export async function performSync(): Promise<boolean> {
 
         if (local) {
           // Rule B: Local is source of truth for deletion!
-          // If local is deleted (in trash) and server says it's active:
-          if (local.deleted && !serverItem.deleted) {
-            // Local deleted it! Never resurrect! Push delete to server so DB is corrected.
-            await enqueueSyncOperation('delete', local);
+          // If local is deleted (in trash), NEVER let the server resurrect it — regardless of server's deleted flag.
+          if (local.deleted) {
+            if (!serverItem.deleted) {
+              // Server thinks it's active; re-push the delete so server catches up.
+              await enqueueSyncOperation('delete', local);
+            }
+            // Either way, skip — do not upsert server data on a locally-deleted row.
             continue;
           }
 

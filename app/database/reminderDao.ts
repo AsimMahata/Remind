@@ -91,8 +91,13 @@ export async function upsertReminder(
       dueAt = excluded.dueAt,
       completed = excluded.completed,
       completedAt = excluded.completedAt,
-      deleted = excluded.deleted,
-      deletedAt = excluded.deletedAt,
+      -- Local deletion is source of truth: once deleted locally, never un-delete via server upsert.
+      -- MAX() keeps deleted=1 if either side has it set.
+      deleted = MAX(reminders.deleted, excluded.deleted),
+      deletedAt = CASE
+        WHEN reminders.deleted = 1 THEN reminders.deletedAt
+        ELSE excluded.deletedAt
+      END,
       notes = excluded.notes,
       notificationId = excluded.notificationId,
       repeatRule = excluded.repeatRule,
