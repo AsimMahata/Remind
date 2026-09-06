@@ -1,5 +1,6 @@
 import mongoose, { Document, Schema } from 'mongoose';
 import { encryptPayload, decryptPayload } from '../utils/crypto';
+import { ENV } from '../config/env';
 
 export interface IEvent extends Document {
   id: string;
@@ -9,6 +10,7 @@ export interface IEvent extends Document {
   encryptedType?: string;
   encryptedPayload: string;
   timestamp: number;
+  createdAt: Date;
   metadata?: Record<string, unknown>;
   getDecryptedPayload(): Record<string, unknown> | null;
 }
@@ -22,6 +24,11 @@ const EventSchema = new Schema<IEvent>(
     encryptedType: { type: String },
     encryptedPayload: { type: String, default: '' },
     timestamp: { type: Number, default: () => Date.now(), index: true },
+    createdAt: {
+      type: Date,
+      default: Date.now,
+      expires: (ENV.EVENT_TTL_DAYS || 7) * 24 * 60 * 60, // Auto-delete in MongoDB after TTL (default 7 days)
+    },
   },
   {
     versionKey: false,
@@ -36,6 +43,9 @@ EventSchema.index({ type: 1, timestamp: -1 });
 EventSchema.pre('save', function (next) {
   if (!this.timestamp) {
     this.timestamp = Date.now();
+  }
+  if (!this.createdAt) {
+    this.createdAt = new Date(this.timestamp);
   }
   // Encrypt event type
   if (this.type && !this.encryptedType) {

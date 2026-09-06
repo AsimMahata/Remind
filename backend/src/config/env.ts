@@ -15,4 +15,6 @@ export const ENV = {
   CORS_ORIGIN: process.env.CORS_ORIGIN || '*',
   RATE_LIMIT_WINDOW_MS: parseInt(process.env.RATE_LIMIT_WINDOW_MS || '900000', 10),
   RATE_LIMIT_MAX: parseInt(process.env.RATE_LIMIT_MAX || '100', 10),
+  EVENT_TTL_DAYS: parseInt(process.env.EVENT_TTL_DAYS || '7', 10),
 };
+

@@ -6,6 +6,7 @@ import {
   ScrollView,
   TouchableOpacity,
   ActivityIndicator,
+  Linking,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Typography } from '../constants/theme';
@@ -23,6 +24,7 @@ import { AccountModal } from '../components/AccountModal';
 import { AdminDashboardModal } from '../components/AdminDashboardModal';
 import { TrashModal } from '../components/TrashModal';
 import { fetchReminderStats } from '../services/reminders';
+import { API_CONFIG } from '../constants/config';
 
 interface SettingsScreenProps {
   settings: AppSettings;
@@ -81,6 +83,15 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
       onRefreshReminders?.();
     } finally {
       setIsSyncingManual(false);
+    }
+  };
+
+  const handleOpenAdminDashboard = async () => {
+    const url = `${API_CONFIG.BASE_URL}/admin`;
+    try {
+      await Linking.openURL(url);
+    } catch {
+      setShowAdminModal(true);
     }
   };
 
@@ -339,7 +350,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
 
         <TouchableOpacity
           style={styles.settingRow}
-          onPress={() => setShowAdminModal(true)}
+          onPress={handleOpenAdminDashboard}
           activeOpacity={0.7}
         >
           <View style={styles.settingTextCol}>

@@ -72,8 +72,8 @@ export async function apiRequest<T = any>(
     return data as T;
   } catch (err: any) {
     clearTimeout(timeoutId);
-    if (err.name === 'AbortError') {
-      throw new Error('Network request timed out. Please check your connection.');
+    if (err.name === 'AbortError' || err.message?.includes('canceled') || err.message?.includes('aborted')) {
+      throw new Error(`Timeout reaching ${url}. Check server is running at ${API_CONFIG.BASE_URL}`);
     }
     throw err;
   }
