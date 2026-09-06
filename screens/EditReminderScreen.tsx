@@ -18,6 +18,7 @@ import { Header } from '../components/Header';
 import { DatePickerModal } from '../components/DatePickerModal';
 import { TimePickerModal } from '../components/TimePickerModal';
 import { speakReminderText } from '../services/tts';
+import { useAppInsets } from '../hooks/useAppInsets';
 
 interface EditReminderScreenProps {
   reminder: Reminder;
@@ -41,6 +42,7 @@ export const EditReminderScreen: React.FC<EditReminderScreenProps> = ({
   onUpdateReminder,
   onDeleteReminder,
 }) => {
+  const { bottomInset } = useAppInsets();
   const [taskText, setTaskText] = useState(reminder.task);
   const [inputHeight, setInputHeight] = useState(34);
   const [dueDate, setDueDate] = useState<Date>(new Date(reminder.dueAt));

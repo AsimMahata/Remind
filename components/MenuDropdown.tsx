@@ -9,6 +9,7 @@ import {
 } from 'react-native';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { Colors, Typography } from '../constants/theme';
+import { useAppInsets } from '../hooks/useAppInsets';
 
 interface MenuDropdownProps {
   visible: boolean;
@@ -25,6 +26,8 @@ export const MenuDropdown: React.FC<MenuDropdownProps> = ({
   onClearCompleted,
   onTestVoice,
 }) => {
+  const { topInset } = useAppInsets();
+
   return (
     <Modal
       visible={visible}
@@ -34,7 +37,7 @@ export const MenuDropdown: React.FC<MenuDropdownProps> = ({
     >
       <TouchableWithoutFeedback onPress={onClose}>
         <View style={styles.overlay}>
-          <View style={styles.menuContainer}>
+          <View style={[styles.menuContainer, { top: topInset + 48 }]}>
             <TouchableOpacity
               style={styles.menuItem}
               onPress={() => {

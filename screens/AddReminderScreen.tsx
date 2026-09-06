@@ -18,6 +18,7 @@ import { DatePickerModal } from '../components/DatePickerModal';
 import { TimePickerModal } from '../components/TimePickerModal';
 import { speakReminderText } from '../services/tts';
 import { getIntelligentSuggestedTime, getDefaultColdStartTime } from '../services/suggestions';
+import { useAppInsets } from '../hooks/useAppInsets';
 
 interface AddReminderScreenProps {
   onBack: () => void;
@@ -37,6 +38,7 @@ export const AddReminderScreen: React.FC<AddReminderScreenProps> = ({
   onBack,
   onSaveReminder,
 }) => {
+  const { bottomInset } = useAppInsets();
   const [taskText, setTaskText] = useState('');
   const [inputHeight, setInputHeight] = useState(34);
   // Initialize with the cold-start rule (:00 hour) on TODAY

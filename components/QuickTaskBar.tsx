@@ -10,6 +10,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { Colors, Typography } from '../constants/theme';
+import { useAppInsets } from '../hooks/useAppInsets';
 
 interface QuickTaskBarProps {
   onAddQuickTask: (taskText: string) => void;
@@ -22,6 +23,7 @@ export const QuickTaskBar: React.FC<QuickTaskBarProps> = ({
   onFabPress,
   onMicPress,
 }) => {
+  const { bottomInset } = useAppInsets();
   const [inputText, setInputText] = useState('');
 
   const handleSubmit = () => {

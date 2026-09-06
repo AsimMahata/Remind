@@ -9,6 +9,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Typography } from '../constants/theme';
+import { useAppInsets } from '../hooks/useAppInsets';
 
 interface HeaderProps {
   title?: string;
@@ -32,9 +33,11 @@ export const Header: React.FC<HeaderProps> = ({
   onMenuPress,
   rightElement,
 }) => {
+  const { topInset } = useAppInsets();
+
   return (
-    <View style={styles.headerContainer}>
-      <StatusBar barStyle="light-content" backgroundColor={Colors.primaryDark} />
+    <View style={[styles.headerContainer, { paddingTop: topInset + 8 }]}>
+      <StatusBar barStyle="light-content" translucent={true} backgroundColor="transparent" />
       <View style={styles.headerContent}>
         {/* Left Side: Back button OR Checkmark Icon + Title */}
         <View style={styles.leftContainer}>

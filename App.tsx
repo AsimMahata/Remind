@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   StyleSheet,
-  StatusBar,
   BackHandler,
   View,
   Animated,
@@ -256,7 +255,7 @@ export default function App() {
 
   return (
     <View style={styles.appContainer}>
-      <ExpoStatusBar style="light" backgroundColor={Colors.primary} translucent={false} />
+      <ExpoStatusBar style="light" />
       
       <Animated.View
         style={[
@@ -313,7 +312,7 @@ export default function App() {
 const styles = StyleSheet.create({
   appContainer: {
     flex: 1,
-    backgroundColor: Colors.primary,
+    backgroundColor: '#000000',
   },
   screenAnimatedContainer: {
     flex: 1,

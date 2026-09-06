@@ -76,3 +76,34 @@ npx expo start
 - **Android Device**: Scan the QR code using the **Expo Go** app on your Android phone.
 - **Android Emulator**: Press `a` in the terminal.
 - **Web Preview**: Press `w` in the terminal to view on your browser.
+
+---
+
+## 📦 Building Standalone Android APK
+
+You can build a standalone `.apk` to install directly on any Android phone (no Expo Go required):
+
+### 1. Build and Automatically Save as `remind.apk`
+Builds on EAS cloud and automatically downloads the finished APK directly to your project folder as `remind.apk`:
+```bash
+npx eas-cli build --platform android --profile preview --output ./remind.apk
+```
+
+### 2. Standard Cloud Build
+Builds on EAS cloud and gives you a QR code and web link to download:
+```bash
+npx eas-cli build --platform android --profile preview
+```
+
+### 3. Download Latest Completed Build as `remind.apk`
+If the build is already finished on Expo servers, download it directly without rebuilding:
+```bash
+npx eas-cli build:download --platform android --profile preview --output ./remind.apk
+```
+
+### 4. Check Project Health
+Verify configuration and dependencies before building:
+```bash
+npx expo-doctor
+```
+

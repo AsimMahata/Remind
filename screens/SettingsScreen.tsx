@@ -11,6 +11,7 @@ import { Colors, Typography } from '../constants/theme';
 import { Header } from '../components/Header';
 import { AppSettings } from '../types/reminder';
 import { testVoicePlayback } from '../services/tts';
+import { useAppInsets } from '../hooks/useAppInsets';
 
 interface SettingsScreenProps {
   settings: AppSettings;
@@ -23,6 +24,8 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
   onUpdateSettings,
   onBack,
 }) => {
+  const { bottomInset } = useAppInsets();
+
   return (
     <View style={styles.container}>
       <Header
