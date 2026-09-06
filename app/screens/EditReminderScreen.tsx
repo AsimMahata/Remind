@@ -19,6 +19,7 @@ import { DatePickerModal } from '../components/DatePickerModal';
 import { TimePickerModal } from '../components/TimePickerModal';
 import { RepeatModal } from '../components/RepeatModal';
 import { VoiceNoteRecorder } from '../components/VoiceNoteRecorder';
+import { SpeechInputButton } from '../components/SpeechInputButton';
 import { formatRepeatSummary } from '../services/recurrence';
 import { useAppInsets } from '../hooks/useAppInsets';
 
@@ -226,6 +227,14 @@ export const EditReminderScreen: React.FC<EditReminderScreenProps> = ({
                 }
               }}
             />
+            {settings.voiceInputEnabled && (
+              <SpeechInputButton
+                currentText={taskText}
+                onSpeechResult={(spokenText) => {
+                  setTaskText((prev) => (prev && prev.trim() ? `${prev.trim()} ${spokenText}` : spokenText));
+                }}
+              />
+            )}
           </View>
         </View>
 

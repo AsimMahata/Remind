@@ -13,7 +13,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Colors, Typography } from '../constants/theme';
 import { Header } from '../components/Header';
 import { AppSettings } from '../types/reminder';
-import { testVoicePlayback } from '../services/tts';
+import { testVoicePlayback } from '../services/textToSpeech';
 import { useAppInsets } from '../hooks/useAppInsets';
 import { getAuthState, subscribeToAuth } from '../services/auth';
 import {
@@ -329,7 +329,33 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
         {/* Section: Advanced */}
         <Text style={[styles.sectionTitle, { marginTop: 28 }]}>Advanced</Text>
 
-        {/* Setting: Voice Notes */}
+        {/* Setting: Voice Input (Speech-to-Text) */}
+        <TouchableOpacity
+          style={styles.settingRow}
+          onPress={() =>
+            onUpdateSettings({ voiceInputEnabled: !settings.voiceInputEnabled })
+          }
+          activeOpacity={0.7}
+        >
+          <View style={styles.settingTextCol}>
+            <Text style={styles.settingMainText}>Voice input</Text>
+            <Text style={styles.settingSubText}>
+              Dictate tasks with your voice (Speech-to-Text into task fields)
+            </Text>
+          </View>
+          <View
+            style={[
+              styles.checkboxBox,
+              settings.voiceInputEnabled && styles.checkboxBoxChecked,
+            ]}
+          >
+            {settings.voiceInputEnabled && (
+              <Ionicons name="checkmark" size={18} color="#FFFFFF" />
+            )}
+          </View>
+        </TouchableOpacity>
+
+        {/* Setting: Voice Notes (Audio Recording) */}
         <TouchableOpacity
           style={styles.settingRow}
           onPress={async () => {

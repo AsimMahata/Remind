@@ -4,23 +4,27 @@
  * Handles audio recording, playback, and local file management.
  * Files are stored in documentDirectory/voice_notes/ and never leave the device.
  *
- * NOTE: expo-av requires a native module (ExponentAV) that is not included in
- * Expo Go. The library is loaded once below; if it is unavailable every function
- * returns null/false with a warning instead of crashing.
+ * Safe for Expo Go and dev builds: does not trigger ExponentAV native module errors.
  */
 
+import { NativeModules, Platform } from 'react-native';
 import * as FileSystem from 'expo-file-system/legacy';
 
-// Load expo-av once. If the native module is absent (Expo Go) this throws and
-// _av stays null. Every exported function checks _av before doing anything.
-let _av: typeof import('expo-av') | null = null;
-try {
-  _av = require('expo-av');
-} catch {
-  console.warn(
-    '[VoiceNotes] expo-av native module not available. ' +
-    'Voice notes require a development build, not Expo Go.'
+// Safely detect if ExponentAV native module is linked before loading expo-av
+const hasNativeAV =
+  Platform.OS === 'web' ||
+  !!(
+    NativeModules?.ExponentAV ||
+    (globalThis as any)?.expo?.modules?.ExponentAV
   );
+
+let _av: typeof import('expo-av') | null = null;
+if (hasNativeAV) {
+  try {
+    _av = require('expo-av');
+  } catch {
+    _av = null;
+  }
 }
 
 const VOICE_NOTES_DIR = `${FileSystem.documentDirectory}voice_notes/`;
@@ -110,7 +114,10 @@ export async function playRecording(uri: string): Promise<any | null> {
   if (!_av) return null;
   try {
     const info = await FileSystem.getInfoAsync(uri);
-    if (!info.exists) { console.warn('[VoiceNotes] File not found:', uri); return null; }
+    if (!info.exists) {
+      console.warn('[VoiceNotes] File not found:', uri);
+      return null;
+    }
 
     await _av.Audio.setAudioModeAsync({
       allowsRecordingIOS: false,

@@ -21,7 +21,7 @@ import {
 
 import { Reminder } from '../types/reminder';
 import { loadSettingsFromStorage } from './storage';
-import { speakReminderText } from './tts';
+import { speakReminderText } from './textToSpeech';
 
 export const ANDROID_CHANNEL_ID = 'remind_alerts_v1';
 export const REMINDER_CATEGORY_ID = 'REMINDER_ACTION_CATEGORY';

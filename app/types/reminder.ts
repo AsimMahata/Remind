@@ -51,15 +51,19 @@ export interface AppSettings {
   vibrateEnabled: boolean;
   quickTaskBarEnabled: boolean;
   soundEnabled: boolean;
+  // Speech-to-text dictation — OFF by default
+  voiceInputEnabled: boolean;
   // Voice notes are an advanced power-user feature — OFF by default
   voiceNotesEnabled: boolean;
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
   notificationsEnabled: true,
-  voiceReminderEnabled: true,
+  voiceReminderEnabled: false,
   vibrateEnabled: true,
   quickTaskBarEnabled: true,
   soundEnabled: true,
+  voiceInputEnabled: false,
   voiceNotesEnabled: false,
 };
+

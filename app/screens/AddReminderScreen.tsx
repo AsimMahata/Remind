@@ -18,6 +18,7 @@ import { DatePickerModal } from '../components/DatePickerModal';
 import { TimePickerModal } from '../components/TimePickerModal';
 import { RepeatModal } from '../components/RepeatModal';
 import { VoiceNoteRecorder } from '../components/VoiceNoteRecorder';
+import { SpeechInputButton } from '../components/SpeechInputButton';
 import { getIntelligentSuggestedTime, getDefaultColdStartTime } from '../services/suggestions';
 import { formatRepeatSummary } from '../services/recurrence';
 import { RepeatRule, AppSettings } from '../types/reminder';
@@ -195,6 +196,14 @@ export const AddReminderScreen: React.FC<AddReminderScreenProps> = ({
                 }
               }}
             />
+            {settings.voiceInputEnabled && (
+              <SpeechInputButton
+                currentText={taskText}
+                onSpeechResult={(spokenText) => {
+                  setTaskText((prev) => (prev && prev.trim() ? `${prev.trim()} ${spokenText}` : spokenText));
+                }}
+              />
+            )}
           </View>
         </View>
 

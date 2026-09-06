@@ -66,8 +66,8 @@ export const VoiceNoteRecorder: React.FC<VoiceNoteRecorderProps> = ({
   const [durationMs, setDurationMs] = useState<number>(0);
   const [playbackMs, setPlaybackMs] = useState<number>(0);
 
-  const recordingRef = useRef<Audio.Recording | null>(null);
-  const soundRef = useRef<Audio.Sound | null>(null);
+  const recordingRef = useRef<any | null>(null);
+  const soundRef = useRef<any | null>(null);
   const durationTimer = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Verify the existing file still exists on this device
