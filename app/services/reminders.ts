@@ -4,8 +4,19 @@ import {
   scheduleReminderNotification,
   cancelReminderNotification,
 } from './notifications';
-import { saveRemindersToStorage } from './storage';
 import { recordUsedTime } from './suggestions';
+import {
+  getActiveReminders,
+  upsertReminder,
+  softDeleteReminder,
+  getDeletedReminders,
+  restoreReminderInDb,
+  purgeDeletedRemindersFromDb,
+  getReminderStats,
+} from '../database/reminderDao';
+import { triggerSync } from './sync';
+import { getAuthState } from './auth';
+import { apiRequest } from './api';
 
 /**
  * Format timestamp into Android style date string matching screenshot:
@@ -84,6 +95,10 @@ export function organizeRemindersIntoSections(reminders: Reminder[]): ReminderSe
   const sorted = [...reminders].sort((a, b) => a.dueAt - b.dueAt);
 
   for (const reminder of sorted) {
+    if (reminder.deleted) {
+      continue;
+    }
+
     if (reminder.completed) {
       completedList.push(reminder);
       continue;
@@ -140,30 +155,53 @@ export function organizeRemindersIntoSections(reminders: Reminder[]): ReminderSe
 }
 
 /**
- * Create a new reminder and schedule its notification
+ * Load reminders from local SQLite database for active session
+ */
+export async function loadActiveRemindersFromDb(): Promise<Reminder[]> {
+  const authState = getAuthState();
+  return await getActiveReminders(authState.user?.id);
+}
+
+/**
+ * Create a new reminder, store in SQLite, schedule local notification, and enqueue sync
  */
 export async function createReminder(
   task: string,
   dueAt: number,
   allReminders: Reminder[]
 ): Promise<{ updatedList: Reminder[]; newReminder: Reminder }> {
+  const authState = getAuthState();
+  const now = Date.now();
+
   const newReminder: Reminder = {
-    id: `remind_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
+    id: `remind_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+    userId: authState.user?.id || null,
     task: task.trim(),
     dueAt,
     completed: false,
-    createdAt: Date.now(),
+    completedAt: null,
+    deleted: false,
+    deletedAt: null,
+    createdAt: now,
+    updatedAt: now,
+    syncStatus: 'pending',
+    version: 1,
   };
 
-  // Schedule notification
+  // Schedule local notification on Android device
   const notificationId = await scheduleReminderNotification(newReminder);
   newReminder.notificationId = notificationId;
 
-  // Record time in intelligent learning history
+  // Record time in intelligent learning suggestions
   recordUsedTime(dueAt).catch(() => {});
 
-  const updatedList = [newReminder, ...allReminders];
-  await saveRemindersToStorage(updatedList);
+  // Save to SQLite and enqueue in sync queue
+  await upsertReminder(newReminder, true);
+
+  // Trigger background cloud sync if authenticated and online
+  triggerSync();
+
+  const updatedList = [newReminder, ...allReminders.filter((r) => r.id !== newReminder.id)];
   return { updatedList, newReminder };
 }
 
@@ -174,37 +212,49 @@ export async function toggleReminderCompletion(
   id: string,
   allReminders: Reminder[]
 ): Promise<Reminder[]> {
+  const now = Date.now();
+  let updatedItem: Reminder | null = null;
+
   const updatedList = await Promise.all(
     allReminders.map(async (r) => {
       if (r.id === id) {
         const nextCompleted = !r.completed;
         if (nextCompleted) {
-          // Completed: Cancel notification
           if (r.notificationId) {
             await cancelReminderNotification(r.notificationId);
           }
-          return {
+          updatedItem = {
             ...r,
             completed: true,
-            completedAt: Date.now(),
+            completedAt: now,
+            updatedAt: now,
             notificationId: null,
+            syncStatus: 'pending',
+            version: (r.version || 1) + 1,
           };
         } else {
-          // Uncompleted: Reschedule if in future
           const notifId = await scheduleReminderNotification(r);
-          return {
+          updatedItem = {
             ...r,
             completed: false,
             completedAt: null,
+            updatedAt: now,
             notificationId: notifId,
+            syncStatus: 'pending',
+            version: (r.version || 1) + 1,
           };
         }
+        return updatedItem;
       }
       return r;
     })
   );
 
-  await saveRemindersToStorage(updatedList);
+  if (updatedItem) {
+    await upsertReminder(updatedItem, true);
+    triggerSync();
+  }
+
   return updatedList;
 }
 
@@ -217,6 +267,9 @@ export async function postponeReminder(
   isAbsoluteTimestamp: boolean,
   allReminders: Reminder[]
 ): Promise<Reminder[]> {
+  const now = Date.now();
+  let updatedItem: Reminder | null = null;
+
   const updatedList = await Promise.all(
     allReminders.map(async (r) => {
       if (r.id === id) {
@@ -224,12 +277,10 @@ export async function postponeReminder(
         if (isAbsoluteTimestamp) {
           newDueAt = minutesOrTimestamp;
         } else {
-          // Add minutes to max(now, r.dueAt)
           const baseTime = Math.max(Date.now(), r.dueAt);
           newDueAt = baseTime + minutesOrTimestamp * 60 * 1000;
         }
 
-        // Reschedule
         if (r.notificationId) {
           await cancelReminderNotification(r.notificationId);
         }
@@ -239,10 +290,14 @@ export async function postponeReminder(
           dueAt: newDueAt,
           completed: false,
           completedAt: null,
+          updatedAt: now,
+          syncStatus: 'pending',
+          version: (r.version || 1) + 1,
         };
 
         const newNotifId = await scheduleReminderNotification(updatedReminder);
         updatedReminder.notificationId = newNotifId;
+        updatedItem = updatedReminder;
 
         return updatedReminder;
       }
@@ -250,7 +305,11 @@ export async function postponeReminder(
     })
   );
 
-  await saveRemindersToStorage(updatedList);
+  if (updatedItem) {
+    await upsertReminder(updatedItem, true);
+    triggerSync();
+  }
+
   return updatedList;
 }
 
@@ -262,12 +321,20 @@ export async function updateReminder(
   updates: Partial<Reminder>,
   allReminders: Reminder[]
 ): Promise<Reminder[]> {
+  const now = Date.now();
+  let updatedItem: Reminder | null = null;
+
   const updatedList = await Promise.all(
     allReminders.map(async (r) => {
       if (r.id === id) {
-        const merged: Reminder = { ...r, ...updates };
+        const merged: Reminder = {
+          ...r,
+          ...updates,
+          updatedAt: now,
+          syncStatus: 'pending',
+          version: (r.version || 1) + 1,
+        };
 
-        // If due date or completion changed, reschedule or cancel notification
         if (updates.dueAt !== undefined || updates.completed !== undefined) {
           if (r.notificationId) {
             await cancelReminderNotification(r.notificationId);
@@ -284,18 +351,23 @@ export async function updateReminder(
           }
         }
 
+        updatedItem = merged;
         return merged;
       }
       return r;
     })
   );
 
-  await saveRemindersToStorage(updatedList);
+  if (updatedItem) {
+    await upsertReminder(updatedItem, true);
+    triggerSync();
+  }
+
   return updatedList;
 }
 
 /**
- * Delete a reminder
+ * Soft delete a reminder locally in SQLite and enqueue cloud sync
  */
 export async function deleteReminder(
   id: string,
@@ -306,16 +378,85 @@ export async function deleteReminder(
     await cancelReminderNotification(target.notificationId);
   }
 
-  const updatedList = allReminders.filter((r) => r.id !== id);
-  await saveRemindersToStorage(updatedList);
-  return updatedList;
+  await softDeleteReminder(id, true);
+  triggerSync();
+
+  return allReminders.filter((r) => r.id !== id);
 }
 
 /**
  * Clear all completed reminders
  */
 export async function clearCompletedReminders(allReminders: Reminder[]): Promise<Reminder[]> {
-  const updatedList = allReminders.filter((r) => !r.completed);
-  await saveRemindersToStorage(updatedList);
-  return updatedList;
+  const toDelete = allReminders.filter((r) => r.completed);
+
+  for (const r of toDelete) {
+    if (r.notificationId) {
+      await cancelReminderNotification(r.notificationId);
+    }
+    await softDeleteReminder(r.id, true);
+  }
+
+  triggerSync();
+  return allReminders.filter((r) => !r.completed);
 }
+
+/**
+ * Fetch all soft-deleted reminders (Trash)
+ */
+export async function fetchDeletedReminders(): Promise<Reminder[]> {
+  const authState = getAuthState();
+  return await getDeletedReminders(authState.user?.id);
+}
+
+/**
+ * Restore a soft-deleted reminder, reschedule notification, and sync
+ */
+export async function restoreDeletedReminder(id: string): Promise<Reminder | null> {
+  const restored = await restoreReminderInDb(id);
+  if (restored) {
+    if (!restored.completed && restored.dueAt > Date.now()) {
+      const notifId = await scheduleReminderNotification(restored);
+      restored.notificationId = notifId;
+      await upsertReminder(restored, false);
+    }
+    triggerSync();
+  }
+  return restored;
+}
+
+/**
+ * Permanently purge all soft-deleted reminders from local SQLite and cloud backend
+ */
+export async function permanentlyPurgeDeletedReminders(): Promise<number> {
+  const authState = getAuthState();
+
+  // 1. Purge locally from SQLite
+  const localPurged = await purgeDeletedRemindersFromDb(authState.user?.id);
+
+  // 2. If authenticated, purge on backend
+  if (authState.isAuthenticated) {
+    try {
+      await apiRequest('/reminders/purge-deleted', { method: 'POST' });
+    } catch (e) {
+      console.warn('Failed to purge cloud trash:', e);
+    }
+  }
+
+  triggerSync();
+  return localPurged;
+}
+
+/**
+ * Get reminder statistics (active, completed, deleted, total)
+ */
+export async function fetchReminderStats(): Promise<{
+  active: number;
+  completed: number;
+  deleted: number;
+  total: number;
+}> {
+  const authState = getAuthState();
+  return await getReminderStats(authState.user?.id);
+}
+

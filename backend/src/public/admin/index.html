@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Remind Admin Dashboard</title>
+  <link rel="stylesheet" href="/admin/admin.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+  <div id="app">
+    <!-- Login Screen -->
+    <div id="login-container" class="login-box">
+      <div class="brand">
+        <div class="logo-icon">🔔</div>
+        <h1>Remind Admin</h1>
+        <p>Sign in with administrator credentials</p>
+      </div>
+      <form id="login-form">
+        <div class="form-group">
+          <label for="admin-email">Admin Email</label>
+          <input type="email" id="admin-email" placeholder="admin@remind.local" required value="admin@remind.local">
+        </div>
+        <div class="form-group">
+          <label for="admin-password">Password</label>
+          <input type="password" id="admin-password" placeholder="••••••••" required>
+        </div>
+        <div id="login-error" class="error-banner hidden"></div>
+        <button type="submit" class="btn-primary" id="login-btn">Sign In to Dashboard</button>
+      </form>
+    </div>
+
+    <!-- Dashboard Container -->
+    <div id="dashboard-container" class="dashboard-wrapper hidden">
+      <header class="navbar">
+        <div class="nav-brand">
+          <span class="nav-logo">🔔</span>
+          <h2>Remind Cloud Control</h2>
+          <span class="badge-pill">Admin Mode</span>
+        </div>
+        <div class="nav-user">
+          <span id="nav-email">admin@remind.local</span>
+          <button id="logout-btn" class="btn-secondary">Log Out</button>
+        </div>
+      </header>
+
+      <main class="main-content">
+        <!-- Stat Cards -->
+        <div class="stats-grid">
+          <div class="stat-card">
+            <div class="stat-title">Total Users</div>
+            <div class="stat-value" id="stat-users">-</div>
+            <div class="stat-sub">Registered accounts</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-title">Active Reminders</div>
+            <div class="stat-value text-cyan" id="stat-active">-</div>
+            <div class="stat-sub">Pending completion</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-title">Completed</div>
+            <div class="stat-value text-green" id="stat-completed">-</div>
+            <div class="stat-sub">Successfully done</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-title">Soft-Deleted</div>
+            <div class="stat-value text-orange" id="stat-deleted">-</div>
+            <div class="stat-sub">Retained in cloud</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-title">Audit Events</div>
+            <div class="stat-value text-purple" id="stat-events">-</div>
+            <div class="stat-sub">AES-256 Encrypted</div>
+          </div>
+        </div>
+
+        <!-- Navigation Tabs -->
+        <div class="tab-bar">
+          <button class="tab-btn active" data-tab="events">Event Audit Log</button>
+          <button class="tab-btn" data-tab="users">Users</button>
+          <button class="tab-btn" data-tab="reminders">All Reminders</button>
+        </div>
+
+        <!-- Tab 1: Event Log -->
+        <section id="tab-events" class="tab-content active">
+          <div class="filter-row">
+            <div class="filter-group">
+              <label>Filter by Type:</label>
+              <select id="filter-event-type">
+                <option value="">All Events</option>
+                <option value="USER_REGISTERED">USER_REGISTERED</option>
+                <option value="USER_LOGIN">USER_LOGIN</option>
+                <option value="USER_LOGOUT">USER_LOGOUT</option>
+                <option value="REMINDER_CREATED">REMINDER_CREATED</option>
+                <option value="REMINDER_UPDATED">REMINDER_UPDATED</option>
+                <option value="REMINDER_COMPLETED">REMINDER_COMPLETED</option>
+                <option value="REMINDER_DELETED">REMINDER_DELETED</option>
+                <option value="REMINDER_POSTPONED">REMINDER_POSTPONED</option>
+                <option value="SYNC_STARTED">SYNC_STARTED</option>
+                <option value="SYNC_SUCCEEDED">SYNC_SUCCEEDED</option>
+                <option value="SYNC_FAILED">SYNC_FAILED</option>
+              </select>
+            </div>
+            <div class="filter-group">
+              <label>Search User ID:</label>
+              <input type="text" id="filter-event-user" placeholder="Filter by user id...">
+            </div>
+            <button id="refresh-events-btn" class="btn-primary">Refresh Events</button>
+          </div>
+
+          <div class="table-card">
+            <table>
+              <thead>
+                <tr>
+                  <th>Timestamp</th>
+                  <th>Event Type</th>
+                  <th>User ID</th>
+                  <th>Reminder ID</th>
+                  <th>Decrypted Payload / Metadata</th>
+                </tr>
+              </thead>
+              <tbody id="events-tbody">
+                <tr><td colspan="5" class="text-center">Loading audit events...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <!-- Tab 2: Users -->
+        <section id="tab-users" class="tab-content">
+          <div class="table-card">
+            <table>
+              <thead>
+                <tr>
+                  <th>User ID</th>
+                  <th>Email</th>
+                  <th>Role</th>
+                  <th>Active Reminders</th>
+                  <th>Registered Date</th>
+                </tr>
+              </thead>
+              <tbody id="users-tbody">
+                <tr><td colspan="5" class="text-center">Loading users...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <!-- Tab 3: Reminders -->
+        <section id="tab-reminders" class="tab-content">
+          <div class="filter-row">
+            <div class="filter-group">
+              <label>Search Task:</label>
+              <input type="text" id="filter-reminder-task" placeholder="Search task name...">
+            </div>
+            <div class="filter-group">
+              <label>Status:</label>
+              <select id="filter-reminder-status">
+                <option value="">All</option>
+                <option value="active">Active Only</option>
+                <option value="completed">Completed Only</option>
+                <option value="deleted">Deleted Only</option>
+              </select>
+            </div>
+            <button id="refresh-reminders-btn" class="btn-primary">Filter</button>
+          </div>
+
+          <div class="table-card">
+            <table>
+              <thead>
+                <tr>
+                  <th>Task</th>
+                  <th>User ID</th>
+                  <th>Due Date</th>
+                  <th>Status</th>
+                  <th>Version</th>
+                  <th>Last Updated</th>
+                </tr>
+              </thead>
+              <tbody id="reminders-tbody">
+                <tr><td colspan="6" class="text-center">Loading reminders...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </main>
+    </div>
+  </div>
+
+  <script src="/admin/admin.js"></script>
+</body>
+</html>

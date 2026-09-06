@@ -4,7 +4,6 @@ import {
   BackHandler,
   View,
   Animated,
-  Platform,
 } from 'react-native';
 import { StatusBar as ExpoStatusBar } from 'expo-status-bar';
 
@@ -12,7 +11,6 @@ import { Reminder, AppSettings, DEFAULT_SETTINGS } from './types/reminder';
 import { Colors } from './constants/theme';
 import {
   loadRemindersFromStorage,
-  saveRemindersToStorage,
   loadSettingsFromStorage,
   saveSettingsToStorage,
 } from './services/storage';
@@ -27,12 +25,22 @@ import {
   deleteReminder,
   clearCompletedReminders,
   updateReminder,
+  loadActiveRemindersFromDb,
 } from './services/reminders';
+import { getDatabase } from './database/sqlite';
+import {
+  upsertReminder,
+  countOfflineReminders,
+  assignOfflineRemindersToUser,
+} from './database/reminderDao';
+import { initializeAuth, subscribeToAuth } from './services/auth';
+import { setupSyncEngine, subscribeToSyncData, performSync } from './services/sync';
 
 import { HomeScreen } from './screens/HomeScreen';
 import { AddReminderScreen } from './screens/AddReminderScreen';
 import { SettingsScreen } from './screens/SettingsScreen';
 import { EditReminderScreen } from './screens/EditReminderScreen';
+import { OfflineMigrationModal } from './components/OfflineMigrationModal';
 
 type ScreenType = 'HOME' | 'ADD_REMINDER' | 'SETTINGS' | 'EDIT_REMINDER';
 
@@ -42,6 +50,11 @@ export default function App() {
   const [reminders, setReminders] = useState<Reminder[]>([]);
   const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
   const [isReady, setIsReady] = useState(false);
+
+  // Offline Migration Prompt State
+  const [offlineCount, setOfflineCount] = useState<number>(0);
+  const [showOfflineModal, setShowOfflineModal] = useState<boolean>(false);
+  const activeUserIdRef = useRef<string | null>(null);
 
   // Screen transition animations
   const fadeAnim = useRef(new Animated.Value(1)).current;
@@ -107,17 +120,37 @@ export default function App() {
     });
   }, [fadeAnim, slideAnim]);
 
-  // 1. Initial app load: Storage & Notification Channels
+  // 1. Initial app load: SQLite Database, Storage, Auth, & Notifications
   useEffect(() => {
     async function initializeApp() {
       try {
         await setupNotificationSystem();
+        await getDatabase(); // Ensure SQLite database and tables are created
+
+        // One-time migration: Import any legacy AsyncStorage reminders into SQLite
+        const existingInDb = await loadActiveRemindersFromDb();
+        if (existingInDb.length === 0) {
+          const legacy = await loadRemindersFromStorage();
+          if (legacy.length > 0) {
+            for (const r of legacy) {
+              await upsertReminder({ ...r, syncStatus: 'pending' }, false);
+            }
+          }
+        }
+
+        // Initialize Authentication & Session
+        await initializeAuth();
+
+        // Load active reminders & settings
         const [loadedReminders, loadedSettings] = await Promise.all([
-          loadRemindersFromStorage(),
+          loadActiveRemindersFromDb(),
           loadSettingsFromStorage(),
         ]);
         setReminders(loadedReminders);
         setSettings(loadedSettings);
+
+        // Start background sync listener
+        setupSyncEngine();
       } catch (err) {
         console.error('Error during App initialization:', err);
       } finally {
@@ -128,7 +161,43 @@ export default function App() {
     initializeApp();
   }, []);
 
-  // 2. Notification action listeners (Finish, Postpone 15m, Postpone 1h)
+  // 2. Listen to Cloud Sync changes & refresh UI automatically
+  useEffect(() => {
+    const unsubData = subscribeToSyncData(async () => {
+      const refreshed = await loadActiveRemindersFromDb();
+      setReminders(refreshed);
+    });
+    return () => {
+      unsubData();
+    };
+  }, []);
+
+  // 3. Listen to Auth changes: check for offline migration dialog
+  useEffect(() => {
+    const unsubAuth = subscribeToAuth(async (state) => {
+      const previousUserId = activeUserIdRef.current;
+      const currentUserId = state.user?.id || null;
+      activeUserIdRef.current = currentUserId;
+
+      // When user transitions from logged out to logged in
+      if (!previousUserId && currentUserId) {
+        const count = await countOfflineReminders();
+        if (count > 0) {
+          setOfflineCount(count);
+          setShowOfflineModal(true);
+        }
+      }
+
+      // Reload reminders for the active account
+      loadActiveRemindersFromDb().then(setReminders);
+    });
+
+    return () => {
+      unsubAuth();
+    };
+  }, []);
+
+  // 4. Notification action listeners (Finish, Postpone 15m, Postpone 1h)
   useEffect(() => {
     const cleanup = registerNotificationListeners(
       async (reminderId) => {
@@ -154,7 +223,7 @@ export default function App() {
     };
   }, []);
 
-  // 3. Android Hardware Back Button Handler
+  // 5. Android Hardware Back Button Handler
   useEffect(() => {
     const onBackPress = () => {
       if (currentScreen !== 'HOME') {
@@ -253,10 +322,25 @@ export default function App() {
     [settings]
   );
 
+  // Offline migration handlers
+  const handleConfirmMigration = async () => {
+    setShowOfflineModal(false);
+    if (activeUserIdRef.current) {
+      await assignOfflineRemindersToUser(activeUserIdRef.current);
+      await performSync();
+      const refreshed = await loadActiveRemindersFromDb();
+      setReminders(refreshed);
+    }
+  };
+
+  const handleCancelMigration = () => {
+    setShowOfflineModal(false);
+  };
+
   return (
     <View style={styles.appContainer}>
       <ExpoStatusBar style="light" />
-      
+
       <Animated.View
         style={[
           styles.screenAnimatedContainer,
@@ -292,6 +376,9 @@ export default function App() {
             settings={settings}
             onUpdateSettings={handleUpdateSettings}
             onBack={navigateBack}
+            onRefreshReminders={() => {
+              loadActiveRemindersFromDb().then(setReminders);
+            }}
           />
         )}
 
@@ -305,6 +392,14 @@ export default function App() {
           />
         )}
       </Animated.View>
+
+      {/* Offline to Online Migration Confirmation Modal */}
+      <OfflineMigrationModal
+        visible={showOfflineModal}
+        count={offlineCount}
+        onConfirm={handleConfirmMigration}
+        onCancel={handleCancelMigration}
+      />
     </View>
   );
 }

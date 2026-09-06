@@ -1,9 +1,10 @@
 # ==============================================================================
-# React Native / Expo .gitignore
+# Monorepo (app / backend) .gitignore
 # ==============================================================================
 
 # Dependencies
 node_modules/
+**/node_modules/
 package-lock.json.bak
 .pnpm-store
 .yarn/*
@@ -13,11 +14,13 @@ package-lock.json.bak
 !.yarn/sdks
 !.yarn/versions
 
-# Expo
+# Expo / React Native (app/)
 .expo/
+**/.expo/
 .expo-shared/
 web-build/
 dist/
+**/dist/
 
 # EAS Build & Native Artifacts
 .eas/
@@ -25,9 +28,10 @@ dist/
 *.aab
 
 # Native Directories (Expo Managed Workflow)
-# Ignore generated native folders unless you intend to use Bare Workflow
 android/
 ios/
+app/android/
+app/ios/
 
 # Signing & Keystores (DO NOT COMMIT SECRETS)
 *.jks
@@ -43,6 +47,19 @@ metro-cache/
 *.jsbundle
 *.bundle
 
+# Local SQLite / Databases
+*.sqlite
+*.sqlite3
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+
+# Backend build & runtime
+backend/dist/
+backend/.tsbuildinfo
+dist/
+
 # Logs & Diagnostics
 *.log
 npm-debug.log*
@@ -54,14 +71,18 @@ report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
 # TypeScript cache
 *.tsbuildinfo
 
-# Environment & Secret files
+# Environment & Secret files (Never commit secrets)
 .env
 .env.local
 .env.development.local
 .env.test.local
 .env.production.local
 .env.*.local
+**/.env
+**/.env.local
+**/.env.*.local
 !.env.example
+!**/.env.example
 
 # Operating System Files
 .DS_Store
@@ -88,3 +109,4 @@ desktop.ini
 
 # Temporary / Scratch assets
 ref-img/
+**/ref-img/
