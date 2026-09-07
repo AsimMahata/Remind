@@ -6,7 +6,6 @@ import {
   StyleSheet,
   Animated,
   Modal,
-  Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
@@ -32,6 +31,7 @@ export const SpeechInputButton: React.FC<SpeechInputButtonProps> = ({
   const [isListening, setIsListening] = useState(false);
   const [transcript, setTranscript] = useState('');
   const [showModal, setShowModal] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   // Pulse animation for active recording
   const pulseAnim = useRef(new Animated.Value(1)).current;
@@ -66,10 +66,12 @@ export const SpeechInputButton: React.FC<SpeechInputButtonProps> = ({
     } catch {}
 
     setTranscript('');
+    setErrorMessage(null);
     setShowModal(true);
 
     const hasPermission = await requestSpeechPermission();
     if (!hasPermission) {
+      setErrorMessage('Microphone permission is required for voice typing.');
       return;
     }
 
@@ -78,6 +80,7 @@ export const SpeechInputButton: React.FC<SpeechInputButtonProps> = ({
       await startSpeechRecognition({
         onStart: () => {
           setIsListening(true);
+          setErrorMessage(null);
         },
         onResult: (text, isFinal) => {
           setTranscript(text);
@@ -87,11 +90,23 @@ export const SpeechInputButton: React.FC<SpeechInputButtonProps> = ({
         },
         onError: (err) => {
           setIsListening(false);
+          if (err !== 'aborted') {
+            setErrorMessage(err || 'Voice input error occurred.');
+          }
         },
         onEnd: () => {
           setIsListening(false);
         },
       });
+    }
+  };
+
+  const handleToggleListening = async () => {
+    if (isListening) {
+      await stopSpeechRecognition();
+      setIsListening(false);
+    } else if (isSupported) {
+      handleStartListening();
     }
   };
 
@@ -119,6 +134,7 @@ export const SpeechInputButton: React.FC<SpeechInputButtonProps> = ({
     setIsListening(false);
     setShowModal(false);
     setTranscript('');
+    setErrorMessage(null);
   };
 
   const sampleDictations = [
@@ -157,20 +173,33 @@ export const SpeechInputButton: React.FC<SpeechInputButtonProps> = ({
           <View style={styles.modalOverlay}>
             <View style={styles.modalContainer}>
               {/* Pulsing Icon */}
-              <View style={styles.iconWrapper}>
+              <TouchableOpacity
+                style={styles.iconWrapper}
+                onPress={handleToggleListening}
+                activeOpacity={0.8}
+              >
                 <Animated.View
                   style={[
                     styles.pulseRing,
                     {
                       transform: [{ scale: pulseAnim }],
-                      opacity: isListening ? 0.35 : 0,
+                      opacity: isListening ? 0.4 : 0,
                     },
                   ]}
                 />
-                <View style={styles.micCircle}>
-                  <Ionicons name="mic" size={32} color="#FFFFFF" />
+                <View
+                  style={[
+                    styles.micCircle,
+                    isListening && { backgroundColor: '#ef4444' },
+                  ]}
+                >
+                  <Ionicons
+                    name={isListening ? 'mic' : 'mic-outline'}
+                    size={32}
+                    color="#FFFFFF"
+                  />
                 </View>
-              </View>
+              </TouchableOpacity>
 
               <Text style={styles.modalTitle}>
                 {isListening ? 'Listening...' : isSupported ? 'Voice Dictation' : 'Speech Input'}
@@ -179,9 +208,27 @@ export const SpeechInputButton: React.FC<SpeechInputButtonProps> = ({
                 {isListening
                   ? 'Speak your task aloud. Processed 100% locally on your device.'
                   : isSupported
-                  ? 'Speak your task or select a quick preset below.'
-                  : 'Select a quick task preset below, or tap the microphone icon on your keyboard for offline voice typing.'}
+                  ? 'Tap the microphone above to start speaking.'
+                  : 'Expo Go does not bundle native speech recognition. Use your keyboard microphone or build a development app.'}
               </Text>
+
+              {/* Informative notice for Expo Go */}
+              {!isSupported && (
+                <View style={styles.expoGoBanner}>
+                  <Ionicons name="information-circle" size={18} color="#f59e0b" style={{ marginRight: 6 }} />
+                  <Text style={styles.expoGoBannerText}>
+                    In Expo Go, tap the <Text style={{ fontWeight: '700' }}>🎙️ microphone on your keyboard</Text> for instant on-device voice typing.
+                  </Text>
+                </View>
+              )}
+
+              {/* Error Alert */}
+              {errorMessage && (
+                <View style={styles.errorBanner}>
+                  <Ionicons name="warning-outline" size={16} color="#ef4444" style={{ marginRight: 6 }} />
+                  <Text style={styles.errorBannerText}>{errorMessage}</Text>
+                </View>
+              )}
 
               {/* Recognized Text Box */}
               <View style={styles.transcriptBox}>
@@ -191,7 +238,7 @@ export const SpeechInputButton: React.FC<SpeechInputButtonProps> = ({
                     !transcript && styles.transcriptPlaceholder,
                   ]}
                 >
-                  {transcript || 'e.g. "Buy groceries and call plumber"'}
+                  {transcript || (isListening ? 'Listening for your voice...' : 'e.g. "Buy groceries and call plumber"')}
                 </Text>
               </View>
 
@@ -243,9 +290,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  micButtonDisabled: {
-    opacity: 0.35,
-  },
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.75)',
@@ -280,7 +324,7 @@ const styles = StyleSheet.create({
     width: 80,
     height: 80,
     borderRadius: 40,
-    backgroundColor: Colors.accentCyan,
+    backgroundColor: '#ef4444',
   },
   micCircle: {
     width: 58,
@@ -301,8 +345,40 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: Colors.textSecondary,
     textAlign: 'center',
-    marginBottom: 16,
+    marginBottom: 14,
     lineHeight: 18,
+  },
+  expoGoBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(245, 158, 11, 0.12)',
+    borderRadius: 8,
+    padding: 10,
+    marginBottom: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(245, 158, 11, 0.28)',
+  },
+  expoGoBannerText: {
+    flex: 1,
+    fontSize: 12,
+    color: '#fbbf24',
+    lineHeight: 16,
+  },
+  errorBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(239, 68, 68, 0.12)',
+    borderRadius: 8,
+    padding: 10,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(239, 68, 68, 0.28)',
+    width: '100%',
+  },
+  errorBannerText: {
+    flex: 1,
+    fontSize: 12,
+    color: '#f87171',
   },
   transcriptBox: {
     width: '100%',

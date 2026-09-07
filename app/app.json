@@ -56,7 +56,8 @@
         }
       ],
       "expo-font",
-      "expo-status-bar"
+      "expo-status-bar",
+      "expo-speech-recognition"
     ],
     "extra": {
       "eas": {

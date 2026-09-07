@@ -11,8 +11,20 @@
  * - Permission requested on-demand only when user taps microphone.
  */
 
-import { NativeModules, Platform } from 'react-native';
+import { Platform } from 'react-native';
 import { requestMicPermission } from './voiceNotes';
+
+// Safely resolve ExpoSpeechRecognitionModule and ExpoWebSpeechRecognition
+let ExpoSpeechRecognitionModule: any = null;
+let ExpoWebSpeechRecognition: any = null;
+
+try {
+  const speechPkg = require('expo-speech-recognition');
+  ExpoSpeechRecognitionModule = speechPkg?.ExpoSpeechRecognitionModule || null;
+  ExpoWebSpeechRecognition = speechPkg?.ExpoWebSpeechRecognition || null;
+} catch {
+  // Graceful fallback if native module or package isn't present
+}
 
 export interface SpeechRecognitionCallbacks {
   onStart?: () => void;
@@ -33,23 +45,20 @@ let activeCallbacks: SpeechRecognitionCallbacks | null = null;
 export function isSpeechRecognitionSupported(): boolean {
   if (Platform.OS === 'web') {
     if (typeof window !== 'undefined') {
-      return !!((window as any).SpeechRecognition || (window as any).webkitSpeechRecognition);
+      return !!((window as any).SpeechRecognition || (window as any).webkitSpeechRecognition || ExpoWebSpeechRecognition);
     }
     return false;
   }
 
-  // Check for native on-device Voice module if linked
-  if (NativeModules?.Voice || NativeModules?.RNVoice) {
-    return true;
-  }
-
   try {
-    const VoiceModule = require('@react-native-voice/voice');
-    if (VoiceModule && (VoiceModule.default || VoiceModule.start)) {
+    if (ExpoSpeechRecognitionModule && typeof ExpoSpeechRecognitionModule.getPermissionsAsync === 'function') {
+      return true;
+    }
+    if (ExpoWebSpeechRecognition) {
       return true;
     }
   } catch {
-    // Native voice module not linked in Expo Go
+    // Native module not linked in current runtime (e.g. standard Expo Go)
   }
 
   return false;
@@ -60,21 +69,24 @@ export function isSpeechRecognitionSupported(): boolean {
  * Must NOT be called at application startup.
  */
 export async function requestSpeechPermission(): Promise<boolean> {
-  if (Platform.OS === 'web') {
-    if (typeof navigator !== 'undefined' && navigator.mediaDevices?.getUserMedia) {
-      try {
+  try {
+    if (Platform.OS === 'web') {
+      if (typeof navigator !== 'undefined' && navigator.mediaDevices?.getUserMedia) {
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
         stream.getTracks().forEach((track) => track.stop());
         return true;
-      } catch (err) {
-        console.warn('[SpeechToText] Web microphone permission denied:', err);
-        return false;
       }
+      return true;
     }
-    return true;
+
+    if (ExpoSpeechRecognitionModule && typeof ExpoSpeechRecognitionModule.requestPermissionsAsync === 'function') {
+      const resp = await ExpoSpeechRecognitionModule.requestPermissionsAsync();
+      return !!resp.granted;
+    }
+  } catch (err) {
+    console.warn('[SpeechToText] Permission request failed:', err);
   }
 
-  // Request on-device mic permission
   return await requestMicPermission();
 }
 
@@ -97,14 +109,115 @@ export async function startSpeechRecognition(
 
   activeCallbacks = callbacks;
 
-  // 1. Web Speech API (Local on-device browser engine in Chrome, Safari, Edge)
-  if (Platform.OS === 'web' && typeof window !== 'undefined') {
-    const SpeechRecognitionClass =
-      (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-
-    if (SpeechRecognitionClass) {
+  // 1. ExpoWebSpeechRecognition (Cross-platform Web Speech API wrapper for React Native & Web)
+  try {
+    if (ExpoWebSpeechRecognition) {
+      const recognition = new ExpoWebSpeechRecognition();
+      recognition.lang = callbacks.lang || 'en-US';
+      recognition.interimResults = true;
+      recognition.continuous = false;
       try {
-        const recognition = new SpeechRecognitionClass();
+        recognition.addsPunctuation = true;
+      } catch {}
+
+      recognition.onstart = () => {
+        isCurrentlyListening = true;
+        callbacks.onStart?.();
+      };
+
+      recognition.onresult = (event: any) => {
+        let interimTranscript = '';
+        let finalTranscript = '';
+
+        if (event && event.results) {
+          for (let i = event.resultIndex || 0; i < event.results.length; ++i) {
+            const item = event.results[i];
+            const transcript = item?.[0]?.transcript || item?.transcript || '';
+            if (item?.isFinal) {
+              finalTranscript += transcript;
+            } else {
+              interimTranscript += transcript;
+            }
+          }
+        }
+
+        const resultText = (finalTranscript || interimTranscript).trim();
+        if (resultText) {
+          callbacks.onResult?.(resultText, !!finalTranscript);
+        }
+      };
+
+      recognition.onerror = (event: any) => {
+        isCurrentlyListening = false;
+        console.warn('[SpeechToText] Recognition error:', event?.error);
+        callbacks.onError?.(event?.error || 'Speech recognition error');
+      };
+
+      recognition.onend = () => {
+        isCurrentlyListening = false;
+        activeRecognitionInstance = null;
+        callbacks.onEnd?.();
+      };
+
+      activeRecognitionInstance = recognition;
+      recognition.start();
+      return true;
+    }
+  } catch (err: any) {
+    console.warn('[SpeechToText] ExpoWebSpeechRecognition failed to start:', err);
+  }
+
+  // 2. Direct ExpoSpeechRecognitionModule start (Native Android/iOS fallback)
+  try {
+    if (ExpoSpeechRecognitionModule && typeof ExpoSpeechRecognitionModule.start === 'function') {
+      const subStart = ExpoSpeechRecognitionModule.addListener('start', () => {
+        isCurrentlyListening = true;
+        callbacks.onStart?.();
+      });
+      const subResult = ExpoSpeechRecognitionModule.addListener('result', (event: any) => {
+        const results = event?.results || [];
+        const topResult = results[0]?.transcript || '';
+        if (topResult) {
+          callbacks.onResult?.(topResult, !!event?.isFinal);
+        }
+      });
+      const subError = ExpoSpeechRecognitionModule.addListener('error', (event: any) => {
+        isCurrentlyListening = false;
+        callbacks.onError?.(event?.error || event?.message || 'Speech recognition error');
+      });
+      const subEnd = ExpoSpeechRecognitionModule.addListener('end', () => {
+        isCurrentlyListening = false;
+        subStart?.remove?.();
+        subResult?.remove?.();
+        subError?.remove?.();
+        subEnd?.remove?.();
+        callbacks.onEnd?.();
+      });
+
+      ExpoSpeechRecognitionModule.start({
+        lang: callbacks.lang || 'en-US',
+        interimResults: true,
+        continuous: false,
+        addsPunctuation: true,
+      });
+
+      activeRecognitionInstance = {
+        stop: () => ExpoSpeechRecognitionModule.stop(),
+        abort: () => ExpoSpeechRecognitionModule.abort(),
+      };
+      return true;
+    }
+  } catch (err: any) {
+    console.warn('[SpeechToText] ExpoSpeechRecognitionModule failed:', err);
+  }
+
+  // 3. Fallback to browser SpeechRecognition if on web
+  if (Platform.OS === 'web' && typeof window !== 'undefined') {
+    const BrowserSpeechClass =
+      (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (BrowserSpeechClass) {
+      try {
+        const recognition = new BrowserSpeechClass();
         recognition.continuous = false;
         recognition.interimResults = true;
         recognition.lang = callbacks.lang || 'en-US';
@@ -135,7 +248,7 @@ export async function startSpeechRecognition(
 
         recognition.onerror = (event: any) => {
           isCurrentlyListening = false;
-          console.warn('[SpeechToText] Recognition error:', event.error);
+          console.warn('[SpeechToText] Web recognition error:', event.error);
           callbacks.onError?.(event.error || 'Speech recognition error');
         };
 
@@ -148,54 +261,12 @@ export async function startSpeechRecognition(
         activeRecognitionInstance = recognition;
         recognition.start();
         return true;
-      } catch (err: any) {
-        console.warn('[SpeechToText] Failed to start Web SpeechRecognition:', err);
-        callbacks.onError?.('Local speech recognition could not start');
-        return false;
+      } catch (err) {
+        console.warn('[SpeechToText] Browser recognition failed:', err);
       }
     }
   }
 
-  // 2. Native On-Device Speech Recognizer (if @react-native-voice/voice linked)
-  try {
-    const VoiceModule = require('@react-native-voice/voice');
-    const Voice = VoiceModule.default || VoiceModule;
-
-    if (Voice && typeof Voice.start === 'function') {
-      Voice.onSpeechStart = () => {
-        isCurrentlyListening = true;
-        callbacks.onStart?.();
-      };
-      Voice.onSpeechResults = (e: any) => {
-        const text = e.value && e.value[0] ? e.value[0] : '';
-        if (text) {
-          callbacks.onResult?.(text, true);
-        }
-      };
-      Voice.onSpeechPartialResults = (e: any) => {
-        const text = e.value && e.value[0] ? e.value[0] : '';
-        if (text) {
-          callbacks.onResult?.(text, false);
-        }
-      };
-      Voice.onSpeechError = (e: any) => {
-        isCurrentlyListening = false;
-        callbacks.onError?.(e.error?.message || 'Speech recognition error');
-      };
-      Voice.onSpeechEnd = () => {
-        isCurrentlyListening = false;
-        callbacks.onEnd?.();
-      };
-
-      activeRecognitionInstance = Voice;
-      await Voice.start(callbacks.lang || 'en-US');
-      return true;
-    }
-  } catch {
-    // Native Voice module not linked in current runtime
-  }
-
-  // If local engine is not present in Expo Go, report graceful status
   callbacks.onError?.('LOCAL_ENGINE_NOT_LINKED');
   return false;
 }
