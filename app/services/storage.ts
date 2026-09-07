@@ -35,7 +35,11 @@ export async function loadSettingsFromStorage(): Promise<AppSettings> {
   try {
     const raw = await AsyncStorage.getItem(STORAGE_KEYS.SETTINGS);
     if (raw) {
-      return { ...DEFAULT_SETTINGS, ...JSON.parse(raw) };
+      const parsed = JSON.parse(raw);
+      if (parsed.voiceInputEnabled === undefined) {
+        parsed.voiceInputEnabled = true;
+      }
+      return { ...DEFAULT_SETTINGS, ...parsed };
     }
     return DEFAULT_SETTINGS;
   } catch (error) {

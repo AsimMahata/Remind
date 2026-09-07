@@ -61,48 +61,37 @@ export const SpeechInputButton: React.FC<SpeechInputButtonProps> = ({
   }, [isListening, pulseAnim]);
 
   const handleStartListening = async () => {
-    if (!isSupported) {
-      return; // Unclickable in unsupported / error cases
-    }
-
     try {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     } catch {}
 
+    setTranscript('');
+    setShowModal(true);
+
     const hasPermission = await requestSpeechPermission();
     if (!hasPermission) {
-      Alert.alert(
-        'Microphone Permission Required',
-        'Please allow microphone access to dictate tasks with your voice.'
-      );
       return;
     }
 
-    setTranscript('');
-    setIsListening(true);
-    setShowModal(true);
-
-    const started = await startSpeechRecognition({
-      onStart: () => {
-        setIsListening(true);
-      },
-      onResult: (text, isFinal) => {
-        setTranscript(text);
-        if (isFinal) {
-          onSpeechResult(text);
-        }
-      },
-      onError: (err) => {
-        console.warn('[SpeechInputButton] Recognition error:', err);
-      },
-      onEnd: () => {
-        setIsListening(false);
-      },
-    });
-
-    if (!started) {
-      setIsListening(false);
-      setShowModal(false);
+    if (isSupported) {
+      setIsListening(true);
+      await startSpeechRecognition({
+        onStart: () => {
+          setIsListening(true);
+        },
+        onResult: (text, isFinal) => {
+          setTranscript(text);
+          if (isFinal) {
+            onSpeechResult(text);
+          }
+        },
+        onError: (err) => {
+          setIsListening(false);
+        },
+        onEnd: () => {
+          setIsListening(false);
+        },
+      });
     }
   };
 
@@ -134,39 +123,25 @@ export const SpeechInputButton: React.FC<SpeechInputButtonProps> = ({
 
   const sampleDictations = [
     'Submit my assignment tomorrow at 7 PM',
-    'Buy groceries',
+    'Buy groceries and fruits',
     'Call Mom at 5 PM',
     'Team meeting on Monday morning',
+    'Workout at gym at 7 PM',
   ];
 
   return (
     <>
       <TouchableOpacity
-        style={[
-          styles.micButton,
-          !isSupported && styles.micButtonDisabled,
-        ]}
+        style={styles.micButton}
         onPress={handleStartListening}
-        disabled={!isSupported}
-        activeOpacity={isSupported ? 0.7 : 1}
-        accessibilityLabel={
-          isSupported
-            ? 'Dictate task with voice'
-            : 'Speech recognition not supported on this device'
-        }
-        accessibilityState={{ disabled: !isSupported }}
+        activeOpacity={0.7}
+        accessibilityLabel="Dictate task with voice"
       >
         <Animated.View style={{ transform: [{ scale: pulseAnim }] }}>
           <Ionicons
             name={isListening ? 'mic' : 'mic-outline'}
             size={22}
-            color={
-              !isSupported
-                ? Colors.cardBorder
-                : isListening
-                ? '#f87171'
-                : Colors.accentCyan
-            }
+            color={isListening ? '#f87171' : Colors.accentCyan}
           />
         </Animated.View>
       </TouchableOpacity>
@@ -198,10 +173,14 @@ export const SpeechInputButton: React.FC<SpeechInputButtonProps> = ({
               </View>
 
               <Text style={styles.modalTitle}>
-                {isListening ? 'Listening...' : 'Speech Detected'}
+                {isListening ? 'Listening...' : isSupported ? 'Voice Dictation' : 'Speech Input'}
               </Text>
               <Text style={styles.modalSub}>
-                Speak what needs to be done. It will be transcribed into text.
+                {isListening
+                  ? 'Speak your task aloud. Processed 100% locally on your device.'
+                  : isSupported
+                  ? 'Speak your task or select a quick preset below.'
+                  : 'Select a quick task preset below, or tap the microphone icon on your keyboard for offline voice typing.'}
               </Text>
 
               {/* Recognized Text Box */}

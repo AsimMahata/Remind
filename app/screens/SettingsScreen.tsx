@@ -13,7 +13,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Colors, Typography } from '../constants/theme';
 import { Header } from '../components/Header';
 import { AppSettings } from '../types/reminder';
-import { testVoicePlayback } from '../services/textToSpeech';
+import { testVoicePlayback, speakReminderText } from '../services/textToSpeech';
 import { useAppInsets } from '../hooks/useAppInsets';
 import { getAuthState, subscribeToAuth } from '../services/auth';
 import {
@@ -50,6 +50,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
   const [showAdminModal, setShowAdminModal] = useState(false);
   const [showTrashModal, setShowTrashModal] = useState(false);
   const [isSyncingManual, setIsSyncingManual] = useState(false);
+  const [isSpeakingTest, setIsSpeakingTest] = useState(false);
   const [stats, setStats] = useState<{ active: number; completed: number; deleted: number; total: number }>({
     active: 0,
     completed: 0,
@@ -97,13 +98,8 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
     }
   };
 
-  const handleOpenAdminDashboard = async () => {
-    const url = `${API_CONFIG.BASE_URL}/admin`;
-    try {
-      await Linking.openURL(url);
-    } catch {
-      setShowAdminModal(true);
-    }
+  const handleOpenAdminDashboard = () => {
+    setShowAdminModal(true);
   };
 
   const renderSyncBadge = () => {
@@ -264,7 +260,36 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
           </View>
         </TouchableOpacity>
 
-        {/* Setting: Voice / TTS */}
+        {/* Setting: Vibration */}
+        <TouchableOpacity
+          style={styles.settingRow}
+          onPress={() =>
+            onUpdateSettings({ vibrateEnabled: !settings.vibrateEnabled })
+          }
+          activeOpacity={0.7}
+        >
+          <View style={styles.settingTextCol}>
+            <Text style={styles.settingMainText}>Vibration</Text>
+            <Text style={styles.settingSubText}>
+              {settings.vibrateEnabled ? 'Enabled' : 'Disabled'}
+            </Text>
+          </View>
+          <View
+            style={[
+              styles.checkboxBox,
+              settings.vibrateEnabled && styles.checkboxBoxChecked,
+            ]}
+          >
+            {settings.vibrateEnabled && (
+              <Ionicons name="checkmark" size={18} color="#FFFFFF" />
+            )}
+          </View>
+        </TouchableOpacity>
+
+        {/* Section: Text-to-Speech (TTS) */}
+        <Text style={[styles.sectionTitle, { marginTop: 28 }]}>Text-to-Speech (TTS)</Text>
+
+        {/* Setting: Voice / TTS Read Aloud */}
         <TouchableOpacity
           style={styles.settingRow}
           onPress={() =>
@@ -273,9 +298,9 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
           activeOpacity={0.7}
         >
           <View style={styles.settingTextCol}>
-            <Text style={styles.settingMainText}>Voice reminders</Text>
+            <Text style={styles.settingMainText}>Text-to-Speech (TTS) Voice Alerts</Text>
             <Text style={styles.settingSubText}>
-              Speak reminder aloud when it triggers (device TTS)
+              Read reminder tasks aloud automatically when triggered
             </Text>
           </View>
           <View
@@ -292,15 +317,47 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
 
         {/* Voice Test Action */}
         <TouchableOpacity
-          style={[styles.settingRow, styles.subRow]}
-          onPress={testVoicePlayback}
+          style={[styles.settingRow, styles.subRow, isSpeakingTest && { borderColor: Colors.accentCyan, backgroundColor: 'rgba(0, 210, 255, 0.08)' }]}
+          onPress={async () => {
+            if (isSpeakingTest) return;
+            setIsSpeakingTest(true);
+            await speakReminderText('This is a voice reminder test for your Remind app.', {
+              onDone: () => setIsSpeakingTest(false),
+              onError: () => {
+                setIsSpeakingTest(false);
+                Alert.alert(
+                  'Text-to-Speech (TTS)',
+                  'Voice synthesis command was sent to your phone. If you did not hear it, please check that your device Media Volume is turned up and not on mute.'
+                );
+              },
+            });
+            setTimeout(() => setIsSpeakingTest(false), 3500);
+          }}
+          disabled={isSpeakingTest}
           activeOpacity={0.7}
         >
           <View style={styles.settingTextCol}>
-            <Text style={styles.actionText}>🔊 Test Speech Synthesizer</Text>
+            <Text style={[styles.actionText, isSpeakingTest && { color: Colors.accentCyan }]}>
+              {isSpeakingTest ? '🔊 Speaking Test Reminder...' : '🔊 Test Text-to-Speech Engine'}
+            </Text>
+            <Text style={styles.settingSubText}>
+              {isSpeakingTest ? 'Playing audio via device speaker...' : 'Tap to hear speech synthesis test'}
+            </Text>
           </View>
-          <Ionicons name="play" size={18} color={Colors.accentCyan} />
+          <Ionicons
+            name={isSpeakingTest ? 'volume-high' : 'volume-medium-outline'}
+            size={20}
+            color={isSpeakingTest ? Colors.accentCyan : Colors.textSecondary}
+          />
         </TouchableOpacity>
+
+        {/* TTS Info Badge */}
+        <View style={[styles.settingRow, { backgroundColor: '#0b1120', paddingVertical: 10, borderColor: '#1e293b' }]}>
+          <Ionicons name="information-circle-outline" size={18} color={Colors.accentCyan} style={{ marginRight: 8 }} />
+          <Text style={{ fontSize: 11, color: '#94a3b8', flex: 1 }}>
+            Engine: <Text style={{ color: '#FFFFFF', fontWeight: '600' }}>Active (expo-speech)</Text> • Supports device languages
+          </Text>
+        </View>
 
         {/* Setting: Vibration */}
         <TouchableOpacity
@@ -340,9 +397,9 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
           activeOpacity={0.7}
         >
           <View style={styles.settingTextCol}>
-            <Text style={styles.settingMainText}>Voice input</Text>
+            <Text style={styles.settingMainText}>Voice Dictation (Speech-to-Text)</Text>
             <Text style={styles.settingSubText}>
-              Dictate tasks with your voice (Speech-to-Text into task fields)
+              Dictate tasks with your voice (100% on-device & private)
             </Text>
           </View>
           <View

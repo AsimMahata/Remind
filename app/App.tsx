@@ -62,6 +62,7 @@ import { EditReminderScreen } from './screens/EditReminderScreen';
 import { BottomNavDock, PrimaryTab } from './components/BottomNavDock';
 import { AlarmRingingModal } from './components/AlarmRingingModal';
 import { OfflineMigrationModal } from './components/OfflineMigrationModal';
+import { ErrorBoundary } from './components/ErrorBoundary';
 
 type ScreenType = 'REMINDERS' | 'ALARMS' | 'SETTINGS' | 'ADD_REMINDER' | 'EDIT_REMINDER';
 
@@ -529,8 +530,9 @@ export default function App() {
     currentScreen === 'SETTINGS';
 
   return (
-    <View style={styles.appContainer}>
-      <ExpoStatusBar style="light" />
+    <ErrorBoundary>
+      <View style={styles.appContainer}>
+        <ExpoStatusBar style="light" />
 
       <Animated.View
         style={[
@@ -621,7 +623,8 @@ export default function App() {
         onConfirm={handleConfirmMigration}
         onCancel={handleCancelMigration}
       />
-    </View>
+      </View>
+    </ErrorBoundary>
   );
 }
 

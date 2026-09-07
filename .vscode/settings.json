@@ -1,0 +1,14 @@
+{
+  "terminal.integrated.defaultProfile.windows": "PowerShell",
+  "terminal.integrated.profiles.windows": {
+    "PowerShell": {
+      "source": "PowerShell",
+      "icon": "terminal-powershell"
+    },
+    "pwsh": {
+      "path": "pwsh.exe",
+      "icon": "terminal-powershell"
+    }
+  },
+  "terminal.external.windowsExec": "wt.exe"
+}

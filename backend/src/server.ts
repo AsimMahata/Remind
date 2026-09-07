@@ -10,6 +10,7 @@ import authRoutes from './routes/auth';
 import syncRoutes from './routes/sync';
 import remindersRoutes from './routes/reminders';
 import adminRoutes from './routes/admin';
+import errorsRoutes from './routes/errors';
 
 const app = express();
 
@@ -83,6 +84,7 @@ app.use('/auth', authRoutes);
 app.use('/sync', syncRoutes);
 app.use('/reminders', remindersRoutes);
 app.use('/admin', adminRoutes);
+app.use('/errors', errorsRoutes);
 
 // Fallback for admin web dashboard navigation
 app.get('/admin/*', (req: Request, res: Response) => {

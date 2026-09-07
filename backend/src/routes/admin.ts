@@ -3,6 +3,7 @@ import jwt from 'jsonwebtoken';
 import { User } from '../models/User';
 import { Reminder } from '../models/Reminder';
 import { Event } from '../models/Event';
+import { ErrorReport } from '../models/ErrorReport';
 import { ENV } from '../config/env';
 import { requireAuth } from '../middleware/auth';
 import { requireAdmin } from '../middleware/admin';
@@ -196,6 +197,135 @@ router.get('/events', async (req: Request, res: Response): Promise<void> => {
   } catch (error) {
     console.error('Admin events error:', error);
     res.status(500).json({ error: 'Failed to fetch event history' });
+  }
+});
+
+/**
+ * GET /admin/errors
+ * List error and crash reports with decrypted diagnostics
+ */
+router.get('/errors', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { solved, limit = '100', skip = '0' } = req.query;
+    const filter: Record<string, unknown> = {};
+
+    if (solved !== undefined) {
+      filter.solved = solved === 'true';
+    }
+
+    const [reports, totalCount, unsolvedCount, solvedCount] = await Promise.all([
+      ErrorReport.find(filter)
+        .sort({ lastSeenAt: -1 })
+        .skip(Number(skip))
+        .limit(Math.min(Number(limit), 200))
+        .lean(),
+      ErrorReport.countDocuments(),
+      ErrorReport.countDocuments({ solved: false }),
+      ErrorReport.countDocuments({ solved: true }),
+    ]);
+
+    const decryptedReports = reports.map((r) => {
+      let decryptedContext: Record<string, unknown> | null = null;
+      if (r.encryptedContext) {
+        decryptedContext = decryptPayload<Record<string, unknown>>(r.encryptedContext);
+      }
+      return {
+        id: r.id,
+        errorName: r.errorName,
+        errorMessage: r.errorMessage,
+        stackTrace: r.stackTrace,
+        componentStack: r.componentStack,
+        platform: r.platform,
+        osVersion: r.osVersion,
+        appVersion: r.appVersion,
+        count: r.count,
+        lastSeenAt: r.lastSeenAt,
+        solved: r.solved,
+        solvedAt: r.solvedAt,
+        createdAt: r.createdAt,
+        expiresAt: r.expiresAt,
+        decryptedContext,
+        diagnostics: decryptedContext,
+      };
+    });
+
+    res.json({
+      reports: decryptedReports,
+      errors: decryptedReports,
+      total: totalCount,
+      activeCount: unsolvedCount,
+      solvedCount: solvedCount,
+      counts: {
+        total: totalCount,
+        unsolved: unsolvedCount,
+        solved: solvedCount,
+      },
+    });
+  } catch (error) {
+    console.error('Admin errors fetch error:', error);
+    res.status(500).json({ error: 'Failed to fetch error reports' });
+  }
+});
+
+/**
+ * PATCH /admin/errors/:id/resolve
+ * Mark an error as solved (1-day TTL) or reopened (7-day TTL)
+ */
+router.patch('/errors/:id/resolve', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { id } = req.params;
+    const { solved = true } = req.body || {};
+    const now = Date.now();
+    // When solved, bug is kept for exactly 1 day then automatically purged by MongoDB TTL
+    // When reopened, restore 7-day TTL
+    const expiresAt = solved
+      ? new Date(now + 24 * 60 * 60 * 1000)
+      : new Date(now + 7 * 24 * 60 * 60 * 1000);
+
+    const updated = await ErrorReport.findOneAndUpdate(
+      { id },
+      {
+        solved: Boolean(solved),
+        solvedAt: solved ? now : null,
+        expiresAt,
+      },
+      { new: true }
+    );
+
+    if (!updated) {
+      res.status(404).json({ error: 'Error report not found' });
+      return;
+    }
+
+    res.json({
+      success: true,
+      message: solved
+        ? 'Bug marked as solved. It will be automatically deleted in 1 day.'
+        : 'Bug reopened with 7-day retention.',
+      report: updated,
+    });
+  } catch (error) {
+    console.error('Admin resolve error:', error);
+    res.status(500).json({ error: 'Failed to resolve error report' });
+  }
+});
+
+/**
+ * DELETE /admin/errors/:id
+ * Manually delete an error report
+ */
+router.delete('/errors/:id', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { id } = req.params;
+    const deleted = await ErrorReport.findOneAndDelete({ id });
+    if (!deleted) {
+      res.status(404).json({ error: 'Error report not found' });
+      return;
+    }
+    res.json({ success: true, message: 'Error report deleted' });
+  } catch (error) {
+    console.error('Admin delete error:', error);
+    res.status(500).json({ error: 'Failed to delete error report' });
   }
 });
 

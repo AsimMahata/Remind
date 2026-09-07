@@ -49,7 +49,7 @@ export const VoiceNoteRecorder: React.FC<VoiceNoteRecorderProps> = ({
   hasVoiceNoteOnServer,
   onRecordingChange,
 }) => {
-  // Graceful degradation: expo-av native module not available (e.g., Expo Go)
+  // Graceful degradation: expo-audio native module not available (e.g., Expo Go)
   if (!isRecordingSupported()) {
     return (
       <View style={styles.unsupportedNote}>
@@ -88,10 +88,12 @@ export const VoiceNoteRecorder: React.FC<VoiceNoteRecorderProps> = ({
     return () => {
       if (durationTimer.current) clearInterval(durationTimer.current);
       if (soundRef.current) {
-        soundRef.current.unloadAsync().catch(() => {});
+        stopPlayback(soundRef.current);
       }
       if (recordingRef.current) {
-        recordingRef.current.stopAndUnloadAsync().catch(() => {});
+        if (typeof recordingRef.current.stop === 'function') {
+          recordingRef.current.stop().catch(() => {});
+        }
       }
     };
   }, []);
@@ -174,11 +176,19 @@ export const VoiceNoteRecorder: React.FC<VoiceNoteRecorderProps> = ({
     // Track playback progress
     durationTimer.current = setInterval(async () => {
       try {
-        const status = await sound.getStatusAsync();
-        if (status.isLoaded) {
-          setPlaybackMs(status.positionMillis || 0);
-          if (status.didJustFinish) {
+        if (sound.currentTime !== undefined) {
+          const currentMs = Math.round((sound.currentTime || 0) * 1000);
+          setPlaybackMs(currentMs);
+          if (sound.duration && sound.currentTime >= sound.duration) {
             handleStopPlayback();
+          }
+        } else if (typeof sound.getStatusAsync === 'function') {
+          const status = await sound.getStatusAsync();
+          if (status.isLoaded) {
+            setPlaybackMs(status.positionMillis || 0);
+            if (status.didJustFinish) {
+              handleStopPlayback();
+            }
           }
         }
       } catch {}

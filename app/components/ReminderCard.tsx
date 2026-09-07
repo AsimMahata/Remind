@@ -48,8 +48,24 @@ export const ReminderCard: React.FC<ReminderCardProps> = ({
     onToggleComplete(reminder.id);
   };
 
-  const handleSpeak = () => {
-    speakReminderText(reminder.task);
+  const [isSpeaking, setIsSpeaking] = React.useState(false);
+
+  const handleSpeak = async () => {
+    try {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    } catch {
+      // ignore
+    }
+    if (isSpeaking) {
+      setIsSpeaking(false);
+      return;
+    }
+    setIsSpeaking(true);
+    await speakReminderText(reminder.task, {
+      onDone: () => setIsSpeaking(false),
+      onError: () => setIsSpeaking(false),
+    });
+    setTimeout(() => setIsSpeaking(false), 4000);
   };
 
   const handleDelete = () => {
@@ -181,15 +197,25 @@ export const ReminderCard: React.FC<ReminderCardProps> = ({
       {/* Action Buttons (Hidden when in multi-select mode) */}
       {!isSelectionMode && (
         <View style={styles.actionsContainer}>
-          {/* Speak Button */}
+          {/* Text-to-Speech (TTS) Read Aloud Button */}
           {!reminder.completed && (
             <TouchableOpacity
               onPress={handleSpeak}
-              style={styles.actionBtn}
+              style={[
+                styles.actionBtn,
+                isSpeaking && {
+                  backgroundColor: 'rgba(0, 210, 255, 0.2)',
+                  borderRadius: 16,
+                },
+              ]}
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-              accessibilityLabel="Speak reminder"
+              accessibilityLabel="Read task aloud with Text-to-Speech"
             >
-              <Ionicons name="volume-medium-outline" size={20} color={Colors.accentCyan} />
+              <Ionicons
+                name={isSpeaking ? 'volume-high' : 'volume-medium-outline'}
+                size={20}
+                color={isSpeaking ? Colors.accentCyan : '#7dd3fc'}
+              />
             </TouchableOpacity>
           )}
 

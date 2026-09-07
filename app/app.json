@@ -50,9 +50,9 @@
         }
       ],
       [
-        "expo-av",
+        "expo-audio",
         {
-          "microphonePermission": "Allow Remind to record voice notes for your tasks."
+          "microphonePermission": "Allow Remind to record audio notes for your tasks."
         }
       ],
       "expo-font",

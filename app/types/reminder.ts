@@ -63,7 +63,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   vibrateEnabled: true,
   quickTaskBarEnabled: true,
   soundEnabled: true,
-  voiceInputEnabled: false,
+  voiceInputEnabled: true,
   voiceNotesEnabled: false,
 };
 

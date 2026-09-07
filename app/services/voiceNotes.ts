@@ -1,30 +1,20 @@
 /**
- * Voice Notes Service
+ * Voice Notes Service (Modern expo-audio Integration)
  *
- * Handles audio recording, playback, and local file management.
+ * Handles audio recording, playback, and local file management using expo-audio.
  * Files are stored in documentDirectory/voice_notes/ and never leave the device.
  *
- * Safe for Expo Go and dev builds: does not trigger ExponentAV native module errors.
+ * Fully compatible with React Native New Architecture (TurboModules & JSI).
  */
 
-import { NativeModules, Platform } from 'react-native';
+import { Platform } from 'react-native';
 import * as FileSystem from 'expo-file-system/legacy';
 
-// Safely detect if ExponentAV native module is linked before loading expo-av
-const hasNativeAV =
-  Platform.OS === 'web' ||
-  !!(
-    NativeModules?.ExponentAV ||
-    (globalThis as any)?.expo?.modules?.ExponentAV
-  );
-
-let _av: typeof import('expo-av') | null = null;
-if (hasNativeAV) {
-  try {
-    _av = require('expo-av');
-  } catch {
-    _av = null;
-  }
+let _expoAudio: any = null;
+try {
+  _expoAudio = require('expo-audio');
+} catch {
+  _expoAudio = null;
 }
 
 const VOICE_NOTES_DIR = `${FileSystem.documentDirectory}voice_notes/`;
@@ -33,8 +23,30 @@ const VOICE_NOTES_DIR = `${FileSystem.documentDirectory}voice_notes/`;
 // Public helpers
 // ---------------------------------------------------------------------------
 
-/** True when expo-av is available (i.e. in a development or production build). */
-export const isRecordingSupported = (): boolean => _av !== null;
+function getAudioRecorderClass(): any | null {
+  if (!_expoAudio) return null;
+  const cls = _expoAudio.AudioModule?.AudioRecorder || _expoAudio.AudioRecorder;
+  return typeof cls === 'function' ? cls : null;
+}
+
+function getPlatformRecordingOptions(options: any): any {
+  if (!options) return {};
+  const common = {
+    extension: options.extension,
+    sampleRate: options.sampleRate,
+    numberOfChannels: options.numberOfChannels,
+    bitRate: options.bitRate,
+    isMeteringEnabled: options.isMeteringEnabled ?? false,
+  };
+  const platformExtra = Platform.OS === 'android' ? options.android : options.ios;
+  return {
+    ...common,
+    ...platformExtra,
+  };
+}
+
+/** True when expo-audio is available. */
+export const isRecordingSupported = (): boolean => getAudioRecorderClass() !== null;
 
 async function ensureDir(): Promise<void> {
   const info = await FileSystem.getInfoAsync(VOICE_NOTES_DIR);
@@ -48,14 +60,17 @@ async function ensureDir(): Promise<void> {
 // ---------------------------------------------------------------------------
 
 /**
- * Request microphone permission.
+ * Request microphone recording permission.
  * Call this only right before recording — never at app startup.
  */
 export async function requestMicPermission(): Promise<boolean> {
-  if (!_av) return false;
+  if (!_expoAudio) return false;
   try {
-    const { status } = await _av.Audio.requestPermissionsAsync();
-    return status === 'granted';
+    if (typeof _expoAudio.requestRecordingPermissionsAsync === 'function') {
+      const { status } = await _expoAudio.requestRecordingPermissionsAsync();
+      return status === 'granted';
+    }
+    return false;
   } catch (err) {
     console.warn('[VoiceNotes] requestMicPermission:', err);
     return false;
@@ -68,13 +83,29 @@ export async function requestMicPermission(): Promise<boolean> {
 
 /** Start recording. Returns the Recording object, or null on failure. */
 export async function startRecording(): Promise<any | null> {
-  if (!_av) return null;
+  const RecorderClass = getAudioRecorderClass();
+  if (!RecorderClass) {
+    console.warn('[VoiceNotes] AudioRecorder native constructor is not available in current environment.');
+    return null;
+  }
   try {
-    await _av.Audio.setAudioModeAsync({ allowsRecordingIOS: true, playsInSilentModeIOS: true });
-    const { recording } = await _av.Audio.Recording.createAsync(
-      _av.Audio.RecordingOptionsPresets.HIGH_QUALITY
-    );
-    return recording;
+    if (typeof _expoAudio.setAudioModeAsync === 'function') {
+      await _expoAudio.setAudioModeAsync({
+        allowsRecording: true,
+        playsInSilentMode: true,
+      });
+    }
+
+    const rawPreset = _expoAudio.RecordingPresets?.HIGH_QUALITY || {};
+    const platformOptions = getPlatformRecordingOptions(rawPreset);
+    const recorder = new RecorderClass(platformOptions);
+    if (typeof recorder.prepareToRecordAsync === 'function') {
+      await recorder.prepareToRecordAsync(rawPreset);
+    }
+    if (typeof recorder.record === 'function') {
+      recorder.record();
+    }
+    return recorder;
   } catch (err) {
     console.error('[VoiceNotes] startRecording:', err);
     return null;
@@ -85,13 +116,17 @@ export async function startRecording(): Promise<any | null> {
  * Stop a recording and persist the file locally.
  * Returns the file URI, or null on failure.
  */
-export async function stopRecording(recording: any): Promise<string | null> {
-  if (!_av || !recording) return null;
+export async function stopRecording(recorder: any): Promise<string | null> {
+  if (!recorder) return null;
   try {
-    await recording.stopAndUnloadAsync();
-    await _av.Audio.setAudioModeAsync({ allowsRecordingIOS: false, playsInSilentModeIOS: true });
+    if (typeof recorder.stop === 'function') {
+      await recorder.stop();
+    }
+    if (_expoAudio && typeof _expoAudio.setAudioModeAsync === 'function') {
+      await _expoAudio.setAudioModeAsync({ allowsRecording: false, playsInSilentMode: true });
+    }
 
-    const tempUri: string | null = recording.getURI();
+    const tempUri: string | null = recorder.uri || (typeof recorder.getURI === 'function' ? recorder.getURI() : null);
     if (!tempUri) return null;
 
     await ensureDir();
@@ -109,9 +144,9 @@ export async function stopRecording(recording: any): Promise<string | null> {
 // Playback
 // ---------------------------------------------------------------------------
 
-/** Play a local voice note. Returns the Sound object, or null on failure. */
+/** Play a local voice note. Returns the Player object, or null on failure. */
 export async function playRecording(uri: string): Promise<any | null> {
-  if (!_av) return null;
+  if (!_expoAudio) return null;
   try {
     const info = await FileSystem.getInfoAsync(uri);
     if (!info.exists) {
@@ -119,25 +154,40 @@ export async function playRecording(uri: string): Promise<any | null> {
       return null;
     }
 
-    await _av.Audio.setAudioModeAsync({
-      allowsRecordingIOS: false,
-      playsInSilentModeIOS: true,
-      shouldDuckAndroid: true,
-    });
-    const { sound } = await _av.Audio.Sound.createAsync({ uri }, { shouldPlay: true });
-    return sound;
+    if (typeof _expoAudio.setAudioModeAsync === 'function') {
+      await _expoAudio.setAudioModeAsync({
+        allowsRecording: false,
+        playsInSilentMode: true,
+        shouldDuckAndroid: true,
+      });
+    }
+
+    if (typeof _expoAudio.createAudioPlayer === 'function') {
+      const player = _expoAudio.createAudioPlayer({ uri });
+      if (typeof player.play === 'function') {
+        player.play();
+      }
+      return player;
+    }
+    return null;
   } catch (err) {
     console.error('[VoiceNotes] playRecording:', err);
     return null;
   }
 }
 
-/** Stop and unload a playing Sound object. */
-export async function stopPlayback(sound: any): Promise<void> {
-  if (!sound) return;
+/** Stop and release a playing Player object. */
+export async function stopPlayback(player: any): Promise<void> {
+  if (!player) return;
   try {
-    await sound.stopAsync();
-    await sound.unloadAsync();
+    if (typeof player.pause === 'function') {
+      player.pause();
+    }
+    if (typeof player.release === 'function') {
+      player.release();
+    } else if (typeof player.remove === 'function') {
+      player.remove();
+    }
   } catch (err) {
     console.warn('[VoiceNotes] stopPlayback:', err);
   }

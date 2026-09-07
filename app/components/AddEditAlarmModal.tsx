@@ -8,7 +8,6 @@ import {
   TextInput,
   Switch,
   Platform,
-  SafeAreaView,
   StatusBar,
   Animated,
   PanResponder,
@@ -448,9 +447,8 @@ export const AddEditAlarmModal: React.FC<AddEditAlarmModalProps> = ({
       statusBarTranslucent={true}
       onRequestClose={onClose}
     >
-      <SafeAreaView style={styles.safeArea}>
+      <View style={styles.container}>
         <StatusBar barStyle="light-content" backgroundColor="#000000" />
-        <View style={styles.container}>
           {/* Top Bar matching Official Xiaomi / Google Clock App */}
           <View style={styles.topHeader}>
             <TouchableOpacity
@@ -618,16 +616,11 @@ export const AddEditAlarmModal: React.FC<AddEditAlarmModalProps> = ({
             </View>
           </View>
         </View>
-      </SafeAreaView>
     </Modal>
   );
 };
 
 const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    backgroundColor: '#000000',
-  },
   container: {
     flex: 1,
     backgroundColor: '#000000',
@@ -639,7 +632,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 18,
-    paddingTop: Platform.OS === 'android' ? (StatusBar.currentHeight ?? 16) + 6 : 8,
+    paddingTop: Platform.OS === 'android' ? (StatusBar.currentHeight ?? 16) + 6 : 48,
     paddingBottom: 14,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: '#1A1D24',

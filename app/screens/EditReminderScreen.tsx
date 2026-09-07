@@ -21,6 +21,7 @@ import { RepeatModal } from '../components/RepeatModal';
 import { VoiceNoteRecorder } from '../components/VoiceNoteRecorder';
 import { SpeechInputButton } from '../components/SpeechInputButton';
 import { formatRepeatSummary } from '../services/recurrence';
+import { speakReminderText } from '../services/tts';
 import { useAppInsets } from '../hooks/useAppInsets';
 
 interface EditReminderScreenProps {
@@ -54,12 +55,30 @@ export const EditReminderScreen: React.FC<EditReminderScreenProps> = ({
   const [isCompleted, setIsCompleted] = useState<boolean>(reminder.completed);
   // Voice note local state (local URI only — never synced)
   const [voiceNoteUri, setVoiceNoteUri] = useState<string | null>(reminder.voiceNoteUri || null);
+  const [isSpeakingPreview, setIsSpeakingPreview] = useState(false);
 
   // Modals
   const [isDatePickerVisible, setIsDatePickerVisible] = useState(false);
   const [isTimePickerVisible, setIsTimePickerVisible] = useState(false);
   const [repeatRule, setRepeatRule] = useState<RepeatRule | null>(reminder.repeat || null);
   const [isRepeatModalVisible, setIsRepeatModalVisible] = useState(false);
+
+  const handleSpeakPreview = async () => {
+    if (!taskText.trim()) return;
+    try {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    } catch {}
+    if (isSpeakingPreview) {
+      setIsSpeakingPreview(false);
+      return;
+    }
+    setIsSpeakingPreview(true);
+    await speakReminderText(taskText.trim(), {
+      onDone: () => setIsSpeakingPreview(false),
+      onError: () => setIsSpeakingPreview(false),
+    });
+    setTimeout(() => setIsSpeakingPreview(false), 4000);
+  };
 
   // Format date display
   const formatDateDisplay = (d: Date) => {
@@ -234,6 +253,22 @@ export const EditReminderScreen: React.FC<EditReminderScreenProps> = ({
                   setTaskText((prev) => (prev && prev.trim() ? `${prev.trim()} ${spokenText}` : spokenText));
                 }}
               />
+            )}
+            {taskText.trim().length > 0 && (
+              <TouchableOpacity
+                onPress={handleSpeakPreview}
+                style={[
+                  styles.ttsPreviewBtn,
+                  isSpeakingPreview && styles.ttsPreviewBtnActive,
+                ]}
+                accessibilityLabel="Listen with Text-to-Speech"
+              >
+                <Ionicons
+                  name={isSpeakingPreview ? 'volume-high' : 'volume-medium-outline'}
+                  size={20}
+                  color={isSpeakingPreview ? Colors.accentCyan : Colors.textSecondary}
+                />
+              </TouchableOpacity>
             )}
           </View>
         </View>
@@ -633,6 +668,15 @@ const styles = StyleSheet.create({
   micButton: {
     padding: 6,
     marginLeft: 8,
+  },
+  ttsPreviewBtn: {
+    padding: 8,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255, 255, 255, 0.04)',
+    marginLeft: 6,
+  },
+  ttsPreviewBtnActive: {
+    backgroundColor: 'rgba(0, 210, 255, 0.2)',
   },
   pickerRow: {
     backgroundColor: Colors.cardBackground,

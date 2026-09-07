@@ -1,4 +1,5 @@
 import { Linking, NativeModules, Platform, Vibration } from 'react-native';
+import Constants from 'expo-constants';
 import { setNotificationChannelAsync } from 'expo-notifications/build/setNotificationChannelAsync';
 import { setNotificationCategoryAsync } from 'expo-notifications/build/setNotificationCategoryAsync';
 import { getPermissionsAsync, requestPermissionsAsync } from 'expo-notifications/build/NotificationPermissions';
@@ -26,23 +27,6 @@ import {
   setAlarmEnabledInDb,
 } from '../database/alarmDao';
 
-// Safely detect if ExponentAV native module is linked before loading expo-av
-const hasNativeAV =
-  Platform.OS === 'web' ||
-  !!(
-    NativeModules?.ExponentAV ||
-    (globalThis as any)?.expo?.modules?.ExponentAV
-  );
-
-let _av: typeof import('expo-av') | null = null;
-if (hasNativeAV) {
-  try {
-    _av = require('expo-av');
-  } catch {
-    _av = null;
-  }
-}
-
 export const ALARM_CHANNEL_ID = 'remind_alarms_channel_v1';
 export const ALARM_CATEGORY_ID = 'REMIND_ALARM_ACTION_CATEGORY';
 
@@ -54,7 +38,6 @@ export const ALARM_ACTION_IDENTIFIERS = {
 let hasAlarmChannelSupport = false;
 
 // Global audio playback and vibration state for active ringing alarms
-let ringingSound: any = null;
 let vibrationInterval: any = null;
 let chimeInterval: any = null;
 let activeRingingAlarm: Alarm | null = null;
@@ -263,6 +246,8 @@ export async function pushAlarmToAndroidSystem(
   vibrate: boolean = true
 ): Promise<void> {
   if (Platform.OS !== 'android') return;
+  // Expo Go client lacks com.android.alarm.permission.SET_ALARM; skip to avoid SecurityException
+  if (Constants.appOwnership === 'expo') return;
   try {
     const [hStr, mStr] = time.split(':');
     const hour = parseInt(hStr, 10);
@@ -331,25 +316,6 @@ export async function startAlarmRinging(alarm: Alarm): Promise<void> {
       }
     }
 
-    // Audio playback configuration if native AV module is available
-    if (_av?.Audio) {
-      try {
-        await _av.Audio.setAudioModeAsync({
-          playsInSilentModeIOS: true,
-          staysActiveInBackground: true,
-          shouldDuckAndroid: false,
-        });
-
-        if (ringingSound) {
-          await ringingSound.stopAsync();
-          await ringingSound.unloadAsync();
-          ringingSound = null;
-        }
-      } catch (ae) {
-        console.warn('Audio setup error:', ae);
-      }
-    }
-
     // Play native system sound chime repeatedly while alarm is ringing
     await triggerSystemAlarmChime(alarm);
 
@@ -380,16 +346,6 @@ export async function stopAlarmRinging(): Promise<void> {
       chimeInterval = null;
     }
 
-    if (ringingSound) {
-      try {
-        await ringingSound.stopAsync();
-        await ringingSound.unloadAsync();
-      } catch (e) {
-        // ignore
-      }
-      ringingSound = null;
-    }
-
     notifyRingingState(null);
   } catch (e) {
     console.warn('stopAlarmRinging error:', e);
@@ -401,15 +357,19 @@ export async function stopAlarmRinging(): Promise<void> {
  * Since all alarms are one-time alarms, dismiss removes it completely from the database!
  */
 export async function dismissAlarm(alarmId: string): Promise<void> {
-  await stopAlarmRinging();
+  try {
+    await stopAlarmRinging();
 
-  const alarm = await getAlarmByIdFromDb(alarmId);
-  if (!alarm) return;
+    const alarm = await getAlarmByIdFromDb(alarmId);
+    if (!alarm) return;
 
-  if (alarm.notificationId) {
-    await cancelAlarm(alarm.notificationId);
+    if (alarm.notificationId) {
+      await cancelAlarm(alarm.notificationId);
+    }
+    await deleteAlarmFromDb(alarmId);
+  } catch (err) {
+    console.warn('dismissAlarm error:', err);
   }
-  await deleteAlarmFromDb(alarmId);
 }
 
 /**
@@ -417,30 +377,30 @@ export async function dismissAlarm(alarmId: string): Promise<void> {
  * Advances the alarm's time string by snoozeMinutes and saves to DB so the UI displays the updated time
  */
 export async function snoozeAlarm(alarmId: string, snoozeMinutes: number = 10): Promise<void> {
-  await stopAlarmRinging();
-
-  const alarm = await getAlarmByIdFromDb(alarmId);
-  if (!alarm) return;
-
-  const snoozeDate = new Date(Date.now() + snoozeMinutes * 60 * 1000);
-
-  // Compute new HH:mm time string so the alarm's display time updates to time + 10 min
-  const newH = snoozeDate.getHours();
-  const newM = snoozeDate.getMinutes();
-  const newHStr = newH < 10 ? `0${newH}` : `${newH}`;
-  const newMStr = newM < 10 ? `0${newM}` : `${newM}`;
-  const newTime = `${newHStr}:${newMStr}`;
-
-  const notificationData: Record<string, any> = {
-    isAlarm: true,
-    alarmId: alarm.id,
-    time: newTime,
-    targetTimestamp: snoozeDate.getTime(),
-    label: alarm.label || 'Alarm',
-    vibrate: alarm.vibrate,
-  };
-
   try {
+    await stopAlarmRinging();
+
+    const alarm = await getAlarmByIdFromDb(alarmId);
+    if (!alarm) return;
+
+    const snoozeDate = new Date(Date.now() + snoozeMinutes * 60 * 1000);
+
+    // Compute new HH:mm time string so the alarm's display time updates to time + 10 min
+    const newH = snoozeDate.getHours();
+    const newM = snoozeDate.getMinutes();
+    const newHStr = newH < 10 ? `0${newH}` : `${newH}`;
+    const newMStr = newM < 10 ? `0${newM}` : `${newM}`;
+    const newTime = `${newHStr}:${newMStr}`;
+
+    const notificationData: Record<string, any> = {
+      isAlarm: true,
+      alarmId: alarm.id,
+      time: newTime,
+      targetTimestamp: snoozeDate.getTime(),
+      label: alarm.label || 'Alarm',
+      vibrate: alarm.vibrate,
+    };
+
     const notificationId = await scheduleNotificationAsync({
       content: {
         title: alarm.label?.trim() ? `⏰ Alarm: ${alarm.label}` : '⏰ Alarm',
@@ -482,43 +442,51 @@ export function registerAlarmNotificationListeners(
 ) {
   // 1. Foreground / Background notification arrival
   const receivedSub = addNotificationReceivedListener(async (notification) => {
-    const data = notification.request.content.data as Record<string, any> | undefined;
-    const alarmId = typeof data?.alarmId === 'string' ? data.alarmId : null;
-    if (data?.isAlarm && alarmId) {
-      const alarm = await getAlarmByIdFromDb(alarmId);
-      if (alarm) {
-        startAlarmRinging(alarm);
-        onAlarmTriggered(alarm);
-      }
-    }
-  });
-
-  // 2. Action responses ('Dismiss' or 'Snooze')
-  const responseSub = addNotificationResponseReceivedListener(async (response) => {
-    const data = response.notification.request.content.data as Record<string, any> | undefined;
-    const alarmId = typeof data?.alarmId === 'string' ? data.alarmId : null;
-    if (data?.isAlarm && alarmId) {
-      const actionId = response.actionIdentifier;
-
-      try {
-        await dismissNotificationAsync(response.notification.request.identifier);
-      } catch (e) {
-        // ignore
-      }
-
-      if (actionId === ALARM_ACTION_IDENTIFIERS.DISMISS) {
-        await dismissAlarm(alarmId);
-        onAlarmsChanged?.();
-      } else if (actionId === ALARM_ACTION_IDENTIFIERS.SNOOZE) {
-        await snoozeAlarm(alarmId, 10);
-        onAlarmsChanged?.();
-      } else {
+    try {
+      const data = notification.request.content.data as Record<string, any> | undefined;
+      const alarmId = typeof data?.alarmId === 'string' ? data.alarmId : null;
+      if (data?.isAlarm && alarmId) {
         const alarm = await getAlarmByIdFromDb(alarmId);
         if (alarm) {
           startAlarmRinging(alarm);
           onAlarmTriggered(alarm);
         }
       }
+    } catch (e) {
+      console.warn('Error in alarm received listener:', e);
+    }
+  });
+
+  // 2. Action responses ('Dismiss' or 'Snooze')
+  const responseSub = addNotificationResponseReceivedListener(async (response) => {
+    try {
+      const data = response.notification.request.content.data as Record<string, any> | undefined;
+      const alarmId = typeof data?.alarmId === 'string' ? data.alarmId : null;
+      if (data?.isAlarm && alarmId) {
+        const actionId = response.actionIdentifier;
+
+        try {
+          await dismissNotificationAsync(response.notification.request.identifier);
+        } catch (e) {
+          // ignore
+        }
+
+        if (actionId === ALARM_ACTION_IDENTIFIERS.DISMISS) {
+          await dismissAlarm(alarmId);
+          onAlarmsChanged?.();
+        } else if (actionId === ALARM_ACTION_IDENTIFIERS.SNOOZE) {
+          await snoozeAlarm(alarmId, 10);
+          onAlarmsChanged?.();
+        } else {
+          const alarm = await getAlarmByIdFromDb(alarmId);
+          if (alarm) {
+            startAlarmRinging(alarm);
+            onAlarmTriggered(alarm);
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('Error in alarm response listener:', e);
     }
   });
 
