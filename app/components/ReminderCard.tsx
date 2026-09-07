@@ -56,19 +56,16 @@ export const ReminderCard: React.FC<ReminderCardProps> = ({
       clearInterval(playbackTimerRef.current);
       playbackTimerRef.current = null;
     }
-    if (soundPlayerRef.current) {
+    const player = soundPlayerRef.current;
+    soundPlayerRef.current = null;
+    if (player) {
       try {
-        await stopPlayback(soundPlayerRef.current);
-      } catch (err) {
-        console.warn('[ReminderCard] stopPlayback error:', err);
-      }
-      soundPlayerRef.current = null;
+        await stopPlayback(player);
+      } catch {}
     }
     try {
       await stopSpeech();
-    } catch (err) {
-      console.warn('[ReminderCard] stopSpeech error:', err);
-    }
+    } catch {}
     setIsPlaying(false);
   }, []);
 
@@ -99,11 +96,19 @@ export const ReminderCard: React.FC<ReminderCardProps> = ({
               try {
                 if (player.currentTime !== undefined && player.duration) {
                   if (player.currentTime >= player.duration) {
+                    if (playbackTimerRef.current) {
+                      clearInterval(playbackTimerRef.current);
+                      playbackTimerRef.current = null;
+                    }
                     await handleStopPlayback();
                   }
                 } else if (typeof player.getStatusAsync === 'function') {
                   const status = await player.getStatusAsync();
                   if (status && (status.didJustFinish || !status.isPlaying)) {
+                    if (playbackTimerRef.current) {
+                      clearInterval(playbackTimerRef.current);
+                      playbackTimerRef.current = null;
+                    }
                     await handleStopPlayback();
                   }
                 }

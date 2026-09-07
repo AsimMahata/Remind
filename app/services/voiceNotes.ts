@@ -176,20 +176,38 @@ export async function playRecording(uri: string): Promise<any | null> {
   }
 }
 
-/** Stop and release a playing Player object. */
+/** Stop and release a playing Player object. Safe to call multiple times or on already-released players. */
 export async function stopPlayback(player: any): Promise<void> {
   if (!player) return;
+  if (player.__isReleased) return;
+  player.__isReleased = true;
+
   try {
     if (typeof player.pause === 'function') {
-      player.pause();
+      try {
+        player.pause();
+      } catch {
+        // Player may already be finished or released
+      }
     }
     if (typeof player.release === 'function') {
-      player.release();
+      try {
+        player.release();
+      } catch {
+        // Already released natively
+      }
     } else if (typeof player.remove === 'function') {
-      player.remove();
+      try {
+        player.remove();
+      } catch {
+        // Already removed natively
+      }
     }
-  } catch (err) {
-    console.warn('[VoiceNotes] stopPlayback:', err);
+  } catch (err: any) {
+    const msg = String(err?.message || err);
+    if (!msg.includes('already released') && !msg.includes('cannot be cast')) {
+      console.warn('[VoiceNotes] stopPlayback:', err);
+    }
   }
 }
 
