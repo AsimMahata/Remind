@@ -4,7 +4,9 @@ import {
   BackHandler,
   View,
   Animated,
+  PanResponder,
 } from 'react-native';
+import * as Haptics from 'expo-haptics';
 import { StatusBar as ExpoStatusBar } from 'expo-status-bar';
 
 import { Reminder, RepeatRule, AppSettings, DEFAULT_SETTINGS } from './types/reminder';
@@ -89,7 +91,12 @@ export default function App() {
   const fadeAnim = useRef(new Animated.Value(1)).current;
   const slideAnim = useRef(new Animated.Value(0)).current;
 
-  const navigateTo = useCallback((screen: ScreenType) => {
+  const PRIMARY_TABS: PrimaryTab[] = ['REMINDERS', 'ALARMS', 'SETTINGS'];
+
+  const navigateTo = useCallback((screen: ScreenType, direction?: 'forward' | 'backward') => {
+    const outOffset = direction === 'forward' ? -24 : (direction === 'backward' ? 24 : -16);
+    const inOffset = direction === 'forward' ? 24 : (direction === 'backward' ? -24 : 16);
+
     Animated.parallel([
       Animated.timing(fadeAnim, {
         toValue: 0,
@@ -97,7 +104,7 @@ export default function App() {
         useNativeDriver: true,
       }),
       Animated.timing(slideAnim, {
-        toValue: -16,
+        toValue: outOffset,
         duration: 90,
         useNativeDriver: true,
       }),
@@ -106,7 +113,7 @@ export default function App() {
       if (screen === 'REMINDERS' || screen === 'ALARMS' || screen === 'SETTINGS') {
         setActiveTab(screen);
       }
-      slideAnim.setValue(16);
+      slideAnim.setValue(inOffset);
       Animated.parallel([
         Animated.timing(fadeAnim, {
           toValue: 1,
@@ -153,11 +160,107 @@ export default function App() {
     });
   }, [fadeAnim, slideAnim]);
 
-  // Tab change handler from the Bottom Navigation Dock
-  const handleTabChange = useCallback((tab: PrimaryTab) => {
+  // Tab change handler from the Bottom Navigation Dock or swipe
+  const handleTabChange = useCallback((tab: PrimaryTab, forcedDirection?: 'forward' | 'backward') => {
     if (currentScreen === tab) return;
-    navigateTo(tab);
-  }, [currentScreen, navigateTo]);
+    const currentIndex = PRIMARY_TABS.indexOf(activeTab);
+    const targetIndex = PRIMARY_TABS.indexOf(tab);
+    const direction = forcedDirection || (targetIndex > currentIndex ? 'forward' : 'backward');
+    try {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    } catch {
+      // ignore
+    }
+    navigateTo(tab, direction);
+  }, [activeTab, currentScreen, navigateTo]);
+
+  // Keep latest refs for pan responder
+  const currentScreenRef = useRef(currentScreen);
+  useEffect(() => {
+    currentScreenRef.current = currentScreen;
+  }, [currentScreen]);
+
+  const handleTabChangeRef = useRef(handleTabChange);
+  useEffect(() => {
+    handleTabChangeRef.current = handleTabChange;
+  }, [handleTabChange]);
+
+  // Left & right swipe handler for primary tabs (Reminders <-> Alarms <-> Settings)
+  const panResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => false,
+      onStartShouldSetPanResponderCapture: () => false,
+      onMoveShouldSetPanResponder: (_evt, gestureState) => {
+        const current = currentScreenRef.current;
+        if (current !== 'REMINDERS' && current !== 'ALARMS' && current !== 'SETTINGS') {
+          return false;
+        }
+        // Dominant horizontal movement (prevents blocking vertical list scrolling)
+        const isHorizontal =
+          Math.abs(gestureState.dx) > 24 &&
+          Math.abs(gestureState.dx) > Math.abs(gestureState.dy) * 1.6;
+
+        if (!isHorizontal) return false;
+
+        // Swiping left (dx < 0) advances forward to next tab
+        if (gestureState.dx < 0) {
+          return current === 'REMINDERS' || current === 'ALARMS';
+        }
+        // Swiping right (dx > 0) goes back to previous tab
+        if (gestureState.dx > 0) {
+          return current === 'ALARMS' || current === 'SETTINGS';
+        }
+        return false;
+      },
+      onMoveShouldSetPanResponderCapture: (_evt, gestureState) => {
+        const current = currentScreenRef.current;
+        if (current !== 'REMINDERS' && current !== 'ALARMS' && current !== 'SETTINGS') {
+          return false;
+        }
+        // Strongly horizontal swipe (2x vertical delta) captures immediately before child views
+        const isDecisiveSwipe =
+          Math.abs(gestureState.dx) > 32 &&
+          Math.abs(gestureState.dx) > Math.abs(gestureState.dy) * 2.0;
+
+        if (!isDecisiveSwipe) return false;
+
+        if (gestureState.dx < 0) {
+          return current === 'REMINDERS' || current === 'ALARMS';
+        }
+        if (gestureState.dx > 0) {
+          return current === 'ALARMS' || current === 'SETTINGS';
+        }
+        return false;
+      },
+      onPanResponderTerminationRequest: () => false,
+      onPanResponderRelease: (_evt, gestureState) => {
+        const current = currentScreenRef.current;
+        const swipeDist = 40;
+        const swipeVel = 0.25;
+
+        const isLeftSwipe = gestureState.dx < -swipeDist || gestureState.vx < -swipeVel;
+        const isRightSwipe = gestureState.dx > swipeDist || gestureState.vx > swipeVel;
+
+        if (isLeftSwipe) {
+          if (current === 'REMINDERS') {
+            handleTabChangeRef.current('ALARMS', 'forward');
+          } else if (current === 'ALARMS') {
+            handleTabChangeRef.current('SETTINGS', 'forward');
+          }
+        } else if (isRightSwipe) {
+          if (current === 'SETTINGS') {
+            handleTabChangeRef.current('ALARMS', 'backward');
+          } else if (current === 'ALARMS') {
+            handleTabChangeRef.current('REMINDERS', 'backward');
+          }
+        }
+      },
+      onPanResponderTerminate: () => {
+        // graceful no-op
+      },
+    })
+  ).current;
+
 
   // Reload alarms from local database
   const reloadAlarms = useCallback(async () => {
@@ -542,6 +645,7 @@ export default function App() {
             transform: [{ translateX: slideAnim }],
           },
         ]}
+        {...panResponder.panHandlers}
       >
         {currentScreen === 'REMINDERS' && (
           <HomeScreen

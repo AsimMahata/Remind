@@ -8,7 +8,8 @@
  */
 
 import { Platform } from 'react-native';
-import * as FileSystem from 'expo-file-system/legacy';
+import { Paths, Directory, File } from 'expo-file-system';
+import { reportCrash } from './crashReporter';
 
 let _expoAudio: any = null;
 try {
@@ -17,7 +18,7 @@ try {
   _expoAudio = null;
 }
 
-const VOICE_NOTES_DIR = `${FileSystem.documentDirectory}voice_notes/`;
+const getVoiceNotesDir = (): Directory => new Directory(Paths.document, 'voice_notes');
 
 // ---------------------------------------------------------------------------
 // Public helpers
@@ -48,10 +49,14 @@ function getPlatformRecordingOptions(options: any): any {
 /** True when expo-audio is available. */
 export const isRecordingSupported = (): boolean => getAudioRecorderClass() !== null;
 
-async function ensureDir(): Promise<void> {
-  const info = await FileSystem.getInfoAsync(VOICE_NOTES_DIR);
-  if (!info.exists) {
-    await FileSystem.makeDirectoryAsync(VOICE_NOTES_DIR, { intermediates: true });
+function ensureDir(): void {
+  try {
+    const dir = getVoiceNotesDir();
+    if (!dir.exists) {
+      dir.create();
+    }
+  } catch (err) {
+    console.warn('[VoiceNotes] ensureDir error:', err);
   }
 }
 
@@ -108,6 +113,7 @@ export async function startRecording(): Promise<any | null> {
     return recorder;
   } catch (err) {
     console.error('[VoiceNotes] startRecording:', err);
+    reportCrash(err, { feature: 'voice-notes', action: 'startRecording' });
     return null;
   }
 }
@@ -129,13 +135,16 @@ export async function stopRecording(recorder: any): Promise<string | null> {
     const tempUri: string | null = recorder.uri || (typeof recorder.getURI === 'function' ? recorder.getURI() : null);
     if (!tempUri) return null;
 
-    await ensureDir();
+    ensureDir();
     const name = `vn_${Date.now()}_${Math.random().toString(36).slice(2, 8)}.m4a`;
-    const dest = `${VOICE_NOTES_DIR}${name}`;
-    await FileSystem.moveAsync({ from: tempUri, to: dest });
-    return dest;
+    const voiceNotesDir = getVoiceNotesDir();
+    const destFile = new File(voiceNotesDir, name);
+    const tempFile = new File(tempUri);
+    await tempFile.move(destFile);
+    return destFile.uri;
   } catch (err) {
     console.error('[VoiceNotes] stopRecording:', err);
+    reportCrash(err, { feature: 'voice-notes', action: 'stopRecording' });
     return null;
   }
 }
@@ -148,8 +157,8 @@ export async function stopRecording(recorder: any): Promise<string | null> {
 export async function playRecording(uri: string): Promise<any | null> {
   if (!_expoAudio) return null;
   try {
-    const info = await FileSystem.getInfoAsync(uri);
-    if (!info.exists) {
+    const file = new File(uri);
+    if (!file.exists) {
       console.warn('[VoiceNotes] File not found:', uri);
       return null;
     }
@@ -172,6 +181,7 @@ export async function playRecording(uri: string): Promise<any | null> {
     return null;
   } catch (err) {
     console.error('[VoiceNotes] playRecording:', err);
+    reportCrash(err, { feature: 'voice-notes', action: 'playRecording', uri });
     return null;
   }
 }
@@ -219,8 +229,10 @@ export async function stopPlayback(player: any): Promise<void> {
 export async function deleteRecording(uri: string | null | undefined): Promise<void> {
   if (!uri) return;
   try {
-    const info = await FileSystem.getInfoAsync(uri);
-    if (info.exists) await FileSystem.deleteAsync(uri, { idempotent: true });
+    const file = new File(uri);
+    if (file.exists) {
+      file.delete();
+    }
   } catch (err) {
     console.warn('[VoiceNotes] deleteRecording:', err);
   }
@@ -230,7 +242,8 @@ export async function deleteRecording(uri: string | null | undefined): Promise<v
 export async function fileExists(uri: string | null | undefined): Promise<boolean> {
   if (!uri) return false;
   try {
-    return (await FileSystem.getInfoAsync(uri)).exists;
+    const file = new File(uri);
+    return file.exists;
   } catch {
     return false;
   }
@@ -242,12 +255,15 @@ export async function fileExists(uri: string | null | undefined): Promise<boolea
  */
 export async function cleanupOrphanedFiles(activeUris: string[]): Promise<void> {
   try {
-    if (!(await FileSystem.getInfoAsync(VOICE_NOTES_DIR)).exists) return;
+    const dir = getVoiceNotesDir();
+    if (!dir.exists) return;
     const active = new Set(activeUris);
-    for (const file of await FileSystem.readDirectoryAsync(VOICE_NOTES_DIR)) {
-      const path = `${VOICE_NOTES_DIR}${file}`;
-      if (!active.has(path)) {
-        await FileSystem.deleteAsync(path, { idempotent: true });
+    const entries = dir.list();
+    for (const entry of entries) {
+      if (!active.has(entry.uri)) {
+        try {
+          entry.delete();
+        } catch {}
       }
     }
   } catch (err) {

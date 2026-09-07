@@ -57,7 +57,19 @@
       ],
       "expo-font",
       "expo-status-bar",
-      "expo-speech-recognition"
+      [
+        "expo-speech-recognition",
+        {
+          "microphonePermission": "Allow Remind to use the microphone for voice tasks.",
+          "speechRecognitionPermission": "Allow Remind to convert your voice into tasks.",
+          "androidSpeechServicePackages": [
+            "com.google.android.googlequicksearchbox",
+            "com.google.android.tts",
+            "com.google.android.as"
+          ]
+        }
+      ],
+      "expo-asset"
     ],
     "extra": {
       "eas": {

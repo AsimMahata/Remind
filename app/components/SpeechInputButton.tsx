@@ -17,6 +17,8 @@ import {
   requestSpeechPermission,
   isSpeechRecognitionSupported,
 } from '../services/speechToText';
+import { reportCrash } from '../services/crashReporter';
+
 
 interface SpeechInputButtonProps {
   onSpeechResult: (recognizedText: string) => void;
@@ -71,7 +73,12 @@ export const SpeechInputButton: React.FC<SpeechInputButtonProps> = ({
 
     const hasPermission = await requestSpeechPermission();
     if (!hasPermission) {
-      setErrorMessage('Microphone permission is required for voice typing.');
+      setErrorMessage('Microphone permission is required for voice typing. Please allow microphone access.');
+      reportCrash(new Error('SpeechPermissionDenied'), {
+        feature: 'speech-to-text',
+        action: 'requestSpeechPermission',
+        hasPermission: false,
+      });
       return;
     }
 
@@ -91,7 +98,24 @@ export const SpeechInputButton: React.FC<SpeechInputButtonProps> = ({
         onError: (err) => {
           setIsListening(false);
           if (err !== 'aborted') {
-            setErrorMessage(err || 'Voice input error occurred.');
+            let friendly = err || 'Voice input error occurred.';
+            if (err === 'service-not-allowed') {
+              friendly = 'Speech service is unavailable on this device. Please enable Google Speech Recognition in Settings > Apps > Default Apps > Voice Assistant, or use the microphone on your keyboard.';
+            } else if (err === 'not-allowed') {
+              friendly = 'Microphone or speech permission was denied. Please allow microphone access in device settings.';
+            } else if (err === 'network') {
+              friendly = 'Network error during speech recognition. Please check your internet connection.';
+            } else if (err === 'no-speech') {
+              friendly = 'No speech detected. Please tap the mic and try speaking again.';
+            }
+            setErrorMessage(friendly);
+
+            // Report error to backend
+            reportCrash(new Error(`SpeechRecognitionError: ${err}`), {
+              feature: 'speech-to-text',
+              action: 'SpeechInputButton.onError',
+              rawError: err,
+            });
           }
         },
         onEnd: () => {

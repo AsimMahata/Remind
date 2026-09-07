@@ -13,6 +13,7 @@
 
 import { Platform } from 'react-native';
 import { requestMicPermission } from './voiceNotes';
+import { reportCrash } from './crashReporter';
 
 // Safely resolve ExpoSpeechRecognitionModule and ExpoWebSpeechRecognition
 let ExpoSpeechRecognitionModule: any = null;
@@ -109,7 +110,119 @@ export async function startSpeechRecognition(
 
   activeCallbacks = callbacks;
 
-  // 1. ExpoWebSpeechRecognition (Cross-platform Web Speech API wrapper for React Native & Web)
+  // Diagnostic metadata collected for backend error telemetry
+  let availableServices: string[] = [];
+  let defaultServicePkg: string | null = null;
+  let isRecognitionAvailable = false;
+  let targetPackage: string | undefined = undefined;
+
+  // Inspect Android speech capabilities
+  if (Platform.OS === 'android' && ExpoSpeechRecognitionModule) {
+    try {
+      if (typeof ExpoSpeechRecognitionModule.isRecognitionAvailable === 'function') {
+        isRecognitionAvailable = !!ExpoSpeechRecognitionModule.isRecognitionAvailable();
+      }
+      if (typeof ExpoSpeechRecognitionModule.getSpeechRecognitionServices === 'function') {
+        availableServices = ExpoSpeechRecognitionModule.getSpeechRecognitionServices() || [];
+      }
+      if (typeof ExpoSpeechRecognitionModule.getDefaultRecognitionService === 'function') {
+        defaultServicePkg = ExpoSpeechRecognitionModule.getDefaultRecognitionService()?.packageName || null;
+      }
+
+      // Priority ordering for target speech package on Android
+      if (defaultServicePkg && (availableServices.length === 0 || availableServices.includes(defaultServicePkg))) {
+        targetPackage = defaultServicePkg;
+      } else if (availableServices.includes('com.google.android.googlequicksearchbox')) {
+        targetPackage = 'com.google.android.googlequicksearchbox';
+      } else if (availableServices.includes('com.google.android.tts')) {
+        targetPackage = 'com.google.android.tts';
+      } else if (availableServices.includes('com.google.android.as')) {
+        targetPackage = 'com.google.android.as';
+      } else if (availableServices.length > 0) {
+        targetPackage = availableServices[0];
+      }
+    } catch (e) {
+      console.warn('[SpeechToText] Capability check warning:', e);
+    }
+  }
+
+  // 1. Native ExpoSpeechRecognitionModule (Preferred for mobile devices: Android & iOS)
+  if (Platform.OS !== 'web' && ExpoSpeechRecognitionModule && typeof ExpoSpeechRecognitionModule.start === 'function') {
+    try {
+      const subStart = ExpoSpeechRecognitionModule.addListener('start', () => {
+        isCurrentlyListening = true;
+        callbacks.onStart?.();
+      });
+
+      const subResult = ExpoSpeechRecognitionModule.addListener('result', (event: any) => {
+        const results = event?.results || [];
+        const topResult = results[0]?.transcript || '';
+        if (topResult) {
+          callbacks.onResult?.(topResult, !!event?.isFinal);
+        }
+      });
+
+      const subError = ExpoSpeechRecognitionModule.addListener('error', (event: any) => {
+        isCurrentlyListening = false;
+        const errCode = event?.error || event?.message || 'Speech recognition error';
+        console.warn('[SpeechToText] Native recognition error:', event);
+
+        // Send full error & device diagnostic telemetry to the backend
+        reportCrash(new Error(`SpeechRecognitionError: ${errCode}`), {
+          feature: 'speech-to-text',
+          action: 'ExpoSpeechRecognitionModule.start',
+          errorType: errCode,
+          rawEvent: event,
+          targetPackage,
+          defaultServicePkg,
+          availableServices,
+          isRecognitionAvailable,
+        });
+
+        callbacks.onError?.(errCode);
+      });
+
+      const subEnd = ExpoSpeechRecognitionModule.addListener('end', () => {
+        isCurrentlyListening = false;
+        subStart?.remove?.();
+        subResult?.remove?.();
+        subError?.remove?.();
+        subEnd?.remove?.();
+        callbacks.onEnd?.();
+      });
+
+      const startOptions: any = {
+        lang: callbacks.lang || 'en-US',
+        interimResults: true,
+        continuous: false,
+        addsPunctuation: true,
+      };
+
+      if (targetPackage) {
+        startOptions.androidRecognitionServicePackage = targetPackage;
+      }
+
+      ExpoSpeechRecognitionModule.start(startOptions);
+
+      activeRecognitionInstance = {
+        stop: () => ExpoSpeechRecognitionModule.stop(),
+        abort: () => ExpoSpeechRecognitionModule.abort(),
+      };
+      return true;
+    } catch (err: any) {
+      console.warn('[SpeechToText] ExpoSpeechRecognitionModule failed:', err);
+      reportCrash(err, {
+        feature: 'speech-to-text',
+        action: 'ExpoSpeechRecognitionModule.start',
+        targetPackage,
+        defaultServicePkg,
+        availableServices,
+        isRecognitionAvailable,
+      });
+    }
+  }
+
+  // 2. ExpoWebSpeechRecognition (Cross-platform Web Speech API wrapper fallback)
   try {
     if (ExpoWebSpeechRecognition) {
       const recognition = new ExpoWebSpeechRecognition();
@@ -149,8 +262,22 @@ export async function startSpeechRecognition(
 
       recognition.onerror = (event: any) => {
         isCurrentlyListening = false;
-        console.warn('[SpeechToText] Recognition error:', event?.error);
-        callbacks.onError?.(event?.error || 'Speech recognition error');
+        const errCode = event?.error || 'Speech recognition error';
+        console.warn('[SpeechToText] Recognition error:', errCode);
+
+        // Send error report to backend
+        reportCrash(new Error(`SpeechRecognitionError: ${errCode}`), {
+          feature: 'speech-to-text',
+          action: 'ExpoWebSpeechRecognition',
+          errorType: errCode,
+          rawEvent: event,
+          targetPackage,
+          defaultServicePkg,
+          availableServices,
+          isRecognitionAvailable,
+        });
+
+        callbacks.onError?.(errCode);
       };
 
       recognition.onend = () => {
@@ -165,50 +292,10 @@ export async function startSpeechRecognition(
     }
   } catch (err: any) {
     console.warn('[SpeechToText] ExpoWebSpeechRecognition failed to start:', err);
-  }
-
-  // 2. Direct ExpoSpeechRecognitionModule start (Native Android/iOS fallback)
-  try {
-    if (ExpoSpeechRecognitionModule && typeof ExpoSpeechRecognitionModule.start === 'function') {
-      const subStart = ExpoSpeechRecognitionModule.addListener('start', () => {
-        isCurrentlyListening = true;
-        callbacks.onStart?.();
-      });
-      const subResult = ExpoSpeechRecognitionModule.addListener('result', (event: any) => {
-        const results = event?.results || [];
-        const topResult = results[0]?.transcript || '';
-        if (topResult) {
-          callbacks.onResult?.(topResult, !!event?.isFinal);
-        }
-      });
-      const subError = ExpoSpeechRecognitionModule.addListener('error', (event: any) => {
-        isCurrentlyListening = false;
-        callbacks.onError?.(event?.error || event?.message || 'Speech recognition error');
-      });
-      const subEnd = ExpoSpeechRecognitionModule.addListener('end', () => {
-        isCurrentlyListening = false;
-        subStart?.remove?.();
-        subResult?.remove?.();
-        subError?.remove?.();
-        subEnd?.remove?.();
-        callbacks.onEnd?.();
-      });
-
-      ExpoSpeechRecognitionModule.start({
-        lang: callbacks.lang || 'en-US',
-        interimResults: true,
-        continuous: false,
-        addsPunctuation: true,
-      });
-
-      activeRecognitionInstance = {
-        stop: () => ExpoSpeechRecognitionModule.stop(),
-        abort: () => ExpoSpeechRecognitionModule.abort(),
-      };
-      return true;
-    }
-  } catch (err: any) {
-    console.warn('[SpeechToText] ExpoSpeechRecognitionModule failed:', err);
+    reportCrash(err, {
+      feature: 'speech-to-text',
+      action: 'ExpoWebSpeechRecognition.start',
+    });
   }
 
   // 3. Fallback to browser SpeechRecognition if on web
@@ -249,6 +336,11 @@ export async function startSpeechRecognition(
         recognition.onerror = (event: any) => {
           isCurrentlyListening = false;
           console.warn('[SpeechToText] Web recognition error:', event.error);
+          reportCrash(new Error(`SpeechRecognitionError: ${event.error}`), {
+            feature: 'speech-to-text',
+            action: 'BrowserSpeechClass',
+            errorType: event.error,
+          });
           callbacks.onError?.(event.error || 'Speech recognition error');
         };
 
@@ -261,12 +353,25 @@ export async function startSpeechRecognition(
         activeRecognitionInstance = recognition;
         recognition.start();
         return true;
-      } catch (err) {
+      } catch (err: any) {
         console.warn('[SpeechToText] Browser recognition failed:', err);
+        reportCrash(err, {
+          feature: 'speech-to-text',
+          action: 'BrowserSpeechClass.start',
+        });
       }
     }
   }
 
+  // Engine could not be initialized
+  reportCrash(new Error('LOCAL_ENGINE_NOT_LINKED'), {
+    feature: 'speech-to-text',
+    action: 'startSpeechRecognition',
+    targetPackage,
+    defaultServicePkg,
+    availableServices,
+    isRecognitionAvailable,
+  });
   callbacks.onError?.('LOCAL_ENGINE_NOT_LINKED');
   return false;
 }

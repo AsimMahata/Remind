@@ -1,5 +1,5 @@
 import { Linking, NativeModules, Platform, Vibration } from 'react-native';
-import Constants from 'expo-constants';
+import Constants, { ExecutionEnvironment } from 'expo-constants';
 import { setNotificationChannelAsync } from 'expo-notifications/build/setNotificationChannelAsync';
 import { setNotificationCategoryAsync } from 'expo-notifications/build/setNotificationCategoryAsync';
 import { getPermissionsAsync, requestPermissionsAsync } from 'expo-notifications/build/NotificationPermissions';
@@ -19,6 +19,7 @@ import {
   SchedulableTriggerInputTypes,
 } from 'expo-notifications/build/Notifications.types';
 
+
 import { Alarm } from '../types/alarm';
 import {
   getAlarmByIdFromDb,
@@ -26,6 +27,7 @@ import {
   deleteAlarmFromDb,
   setAlarmEnabledInDb,
 } from '../database/alarmDao';
+import { reportCrash } from './crashReporter';
 
 export const ALARM_CHANNEL_ID = 'remind_alarms_channel_v1';
 export const ALARM_CATEGORY_ID = 'REMIND_ALARM_ACTION_CATEGORY';
@@ -233,6 +235,7 @@ export async function scheduleAlarm(alarm: Alarm): Promise<string | null> {
     return notificationId;
   } catch (err) {
     console.warn('scheduleAlarm error:', err);
+    reportCrash(err, { feature: 'alarm-engine', action: 'scheduleAlarm', alarmId: alarm.id, time: alarm.time });
     return null;
   }
 }
@@ -247,7 +250,12 @@ export async function pushAlarmToAndroidSystem(
 ): Promise<void> {
   if (Platform.OS !== 'android') return;
   // Expo Go client lacks com.android.alarm.permission.SET_ALARM; skip to avoid SecurityException
-  if (Constants.appOwnership === 'expo') return;
+  if (
+    Constants.executionEnvironment === ExecutionEnvironment.StoreClient ||
+    (Constants as any).appOwnership === 'expo'
+  ) {
+    return;
+  }
   try {
     const [hStr, mStr] = time.split(':');
     const hour = parseInt(hStr, 10);
