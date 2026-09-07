@@ -262,11 +262,28 @@ export async function pushAlarmToAndroidSystem(
     const minute = parseInt(mStr, 10);
     if (isNaN(hour) || isNaN(minute)) return;
 
+    const safeLabel = (label || 'Alarm').replace(/[;=#]/g, ' ');
+
+    // React Native's Linking.sendIntent has a known bug (https://github.com/react/react-native/issues/4141)
+    // where JS numbers are stored into the bundle as Double instead of Integer.
+    // The Android System Clock app specifically calls getIntExtra("android.intent.extra.alarm.HOUR", -1).
+    // Because Double cannot be cast to Integer, getIntExtra() returns -1, causing the Clock app to
+    // default to the CURRENT TIME (resulting in an alarm set for 24 hours later).
+    // Using Android's URI_INTENT_SCHEME syntax with `i.` strictly enforces Integer type serialization.
+    const intentUrl = `intent:#Intent;action=android.intent.action.SET_ALARM;i.android.intent.extra.alarm.HOUR=${hour};i.android.intent.extra.alarm.MINUTES=${minute};S.android.intent.extra.alarm.MESSAGE=${encodeURIComponent(safeLabel)};B.android.intent.extra.alarm.VIBRATE=${vibrate};B.android.intent.extra.alarm.SKIP_UI=true;end`;
+
+    try {
+      await Linking.openURL(intentUrl);
+      return;
+    } catch {
+      // If openURL intent scheme is blocked on a particular ROM, fall back to sendIntent
+    }
+
     if (typeof Linking.sendIntent === 'function') {
       await Linking.sendIntent('android.intent.action.SET_ALARM', [
         { key: 'android.intent.extra.alarm.HOUR', value: hour },
         { key: 'android.intent.extra.alarm.MINUTES', value: minute },
-        { key: 'android.intent.extra.alarm.MESSAGE', value: label || 'Alarm' },
+        { key: 'android.intent.extra.alarm.MESSAGE', value: safeLabel },
         { key: 'android.intent.extra.alarm.VIBRATE', value: vibrate },
         { key: 'android.intent.extra.alarm.SKIP_UI', value: true },
       ]);
