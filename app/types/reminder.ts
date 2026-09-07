@@ -28,6 +28,8 @@ export interface Reminder {
   voiceNoteUri?: string | null;
   // hasVoiceNote is the cloud-safe boolean flag sent during sync
   hasVoiceNote?: boolean;
+  // Indicates if the reminder was created with or marked as a voice reminder
+  isVoice?: boolean;
 
   // Synchronization & Isolation fields
   syncStatus?: 'synced' | 'pending' | 'failed';
@@ -53,7 +55,7 @@ export interface AppSettings {
   soundEnabled: boolean;
   // Speech-to-text dictation — OFF by default
   voiceInputEnabled: boolean;
-  // Voice notes are an advanced power-user feature — OFF by default
+  // Voice notes: record and attach audio to reminders
   voiceNotesEnabled: boolean;
 }
 
@@ -64,6 +66,6 @@ export const DEFAULT_SETTINGS: AppSettings = {
   quickTaskBarEnabled: true,
   soundEnabled: true,
   voiceInputEnabled: true,
-  voiceNotesEnabled: false,
+  voiceNotesEnabled: true,
 };
 

@@ -39,6 +39,9 @@ export async function loadSettingsFromStorage(): Promise<AppSettings> {
       if (parsed.voiceInputEnabled === undefined) {
         parsed.voiceInputEnabled = true;
       }
+      if (parsed.voiceNotesEnabled === undefined) {
+        parsed.voiceNotesEnabled = true;
+      }
       return { ...DEFAULT_SETTINGS, ...parsed };
     }
     return DEFAULT_SETTINGS;

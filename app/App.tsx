@@ -363,8 +363,8 @@ export default function App() {
   );
 
   const handleCreateReminder = useCallback(
-    async (taskText: string, dueAt: number, repeat?: RepeatRule | null, voiceNoteUri?: string | null) => {
-      const { updatedList } = await createReminder(taskText, dueAt, reminders, repeat, voiceNoteUri);
+    async (taskText: string, dueAt: number, repeat?: RepeatRule | null, voiceNoteUri?: string | null, isVoice?: boolean) => {
+      const { updatedList } = await createReminder(taskText, dueAt, reminders, repeat, voiceNoteUri, isVoice);
       setReminders(updatedList);
     },
     [reminders]

@@ -28,7 +28,13 @@ import { useAppInsets } from '../hooks/useAppInsets';
 interface AddReminderScreenProps {
   settings: AppSettings;
   onBack: () => void;
-  onSaveReminder: (task: string, dueAt: number, repeat?: RepeatRule | null, voiceNoteUri?: string | null) => void;
+  onSaveReminder: (
+    task: string,
+    dueAt: number,
+    repeat?: RepeatRule | null,
+    voiceNoteUri?: string | null,
+    isVoice?: boolean
+  ) => void;
 }
 
 const MONTH_NAMES = [
@@ -49,6 +55,7 @@ export const AddReminderScreen: React.FC<AddReminderScreenProps> = ({
   const [taskText, setTaskText] = useState('');
   const [inputHeight, setInputHeight] = useState(34);
   const [voiceNoteUri, setVoiceNoteUri] = useState<string | null>(null);
+  const [isVoice, setIsVoice] = useState(false);
   // Initialize with the cold-start rule (:00 hour) on TODAY
   const [dueDate, setDueDate] = useState<Date>(() => {
     const d = getDefaultColdStartTime();
@@ -146,7 +153,13 @@ export const AddReminderScreen: React.FC<AddReminderScreenProps> = ({
       // ignore
     }
 
-    onSaveReminder(taskText.trim(), dueDate.getTime(), repeatRule, voiceNoteUri);
+    onSaveReminder(
+      taskText.trim(),
+      dueDate.getTime(),
+      repeatRule,
+      voiceNoteUri,
+      isVoice || !!voiceNoteUri
+    );
     onBack();
   };
 
@@ -219,6 +232,7 @@ export const AddReminderScreen: React.FC<AddReminderScreenProps> = ({
               <SpeechInputButton
                 currentText={taskText}
                 onSpeechResult={(spokenText) => {
+                  setIsVoice(true);
                   setTaskText((prev) => (prev && prev.trim() ? `${prev.trim()} ${spokenText}` : spokenText));
                 }}
               />
@@ -248,7 +262,10 @@ export const AddReminderScreen: React.FC<AddReminderScreenProps> = ({
             <Text style={styles.sectionLabel}>VOICE NOTE</Text>
             <VoiceNoteRecorder
               existingUri={voiceNoteUri}
-              onRecordingChange={setVoiceNoteUri}
+              onRecordingChange={(uri) => {
+                setVoiceNoteUri(uri);
+                if (uri) setIsVoice(true);
+              }}
             />
           </View>
         )}

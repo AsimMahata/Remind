@@ -173,7 +173,8 @@ export async function createReminder(
   dueAt: number,
   allReminders: Reminder[],
   repeat?: RepeatRule | null,
-  voiceNoteUri?: string | null
+  voiceNoteUri?: string | null,
+  isVoice?: boolean
 ): Promise<{ updatedList: Reminder[]; newReminder: Reminder }> {
   const authState = getAuthState();
   const now = Date.now();
@@ -189,6 +190,7 @@ export async function createReminder(
     deletedAt: null,
     repeat: repeat || null,
     voiceNoteUri: voiceNoteUri || null,
+    isVoice: isVoice || !!voiceNoteUri,
     createdAt: now,
     updatedAt: now,
     syncStatus: 'pending',

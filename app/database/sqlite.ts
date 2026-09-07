@@ -25,6 +25,7 @@ async function initDatabase(): Promise<SQLite.SQLiteDatabase> {
       notificationId TEXT,
       repeatRule TEXT,
       voiceNoteUri TEXT,
+      isVoice INTEGER DEFAULT 0,
       version INTEGER DEFAULT 1,
       createdAt INTEGER NOT NULL,
       updatedAt INTEGER NOT NULL,
@@ -79,7 +80,7 @@ async function initDatabase(): Promise<SQLite.SQLiteDatabase> {
     CREATE INDEX IF NOT EXISTS idx_alarms_targetTimestamp ON alarms (targetTimestamp);
   `);
 
-  // Migration check: ensure repeatRule column exists for recurring reminders on existing databases
+  // Migration check: ensure repeatRule, voiceNoteUri, and isVoice columns exist
   try {
     const tableInfo = await db.getAllAsync<any>('PRAGMA table_info(reminders);');
     const hasRepeatCol = tableInfo.some((col: any) => col.name === 'repeatRule');
@@ -89,6 +90,10 @@ async function initDatabase(): Promise<SQLite.SQLiteDatabase> {
     const hasVoiceNoteCol = tableInfo.some((col: any) => col.name === 'voiceNoteUri');
     if (!hasVoiceNoteCol) {
       await db.execAsync('ALTER TABLE reminders ADD COLUMN voiceNoteUri TEXT;');
+    }
+    const hasIsVoiceCol = tableInfo.some((col: any) => col.name === 'isVoice');
+    if (!hasIsVoiceCol) {
+      await db.execAsync('ALTER TABLE reminders ADD COLUMN isVoice INTEGER DEFAULT 0;');
     }
 
     const alarmTableInfo = await db.getAllAsync<any>('PRAGMA table_info(alarms);');

@@ -28,6 +28,7 @@ function rowToReminder(row: any): Reminder {
     notificationId: row.notificationId || null,
     repeat,
     voiceNoteUri: row.voiceNoteUri || null,
+    isVoice: Boolean(row.isVoice || row.voiceNoteUri),
     version: Number(row.version || 1),
     createdAt: Number(row.createdAt),
     updatedAt: Number(row.updatedAt),
@@ -84,8 +85,8 @@ export async function upsertReminder(
   await db.runAsync(
     `INSERT INTO reminders (
       id, userId, task, dueAt, completed, completedAt, deleted, deletedAt,
-      notes, notificationId, repeatRule, voiceNoteUri, version, createdAt, updatedAt, syncStatus, serverUpdatedAt
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      notes, notificationId, repeatRule, voiceNoteUri, isVoice, version, createdAt, updatedAt, syncStatus, serverUpdatedAt
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(id) DO UPDATE SET
       userId = COALESCE(excluded.userId, reminders.userId),
       task = excluded.task,
@@ -104,6 +105,7 @@ export async function upsertReminder(
       repeatRule = excluded.repeatRule,
       -- voiceNoteUri is local-only: preserve existing value if incoming is NULL
       voiceNoteUri = COALESCE(excluded.voiceNoteUri, reminders.voiceNoteUri),
+      isVoice = COALESCE(excluded.isVoice, reminders.isVoice),
       version = excluded.version,
       updatedAt = excluded.updatedAt,
       syncStatus = excluded.syncStatus,
@@ -121,6 +123,7 @@ export async function upsertReminder(
       reminder.notificationId || null,
       reminder.repeat ? JSON.stringify(reminder.repeat) : null,
       reminder.voiceNoteUri || null,
+      reminder.isVoice || (reminder.voiceNoteUri ? 1 : 0) ? 1 : 0,
       reminder.version || 1,
       createdAt,
       updatedAt,

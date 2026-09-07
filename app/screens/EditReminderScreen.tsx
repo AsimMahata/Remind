@@ -55,6 +55,9 @@ export const EditReminderScreen: React.FC<EditReminderScreenProps> = ({
   const [isCompleted, setIsCompleted] = useState<boolean>(reminder.completed);
   // Voice note local state (local URI only — never synced)
   const [voiceNoteUri, setVoiceNoteUri] = useState<string | null>(reminder.voiceNoteUri || null);
+  const [isVoice, setIsVoice] = useState<boolean>(
+    Boolean(reminder.voiceNoteUri || reminder.hasVoiceNote || reminder.isVoice)
+  );
   const [isSpeakingPreview, setIsSpeakingPreview] = useState(false);
 
   // Modals
@@ -128,6 +131,7 @@ export const EditReminderScreen: React.FC<EditReminderScreenProps> = ({
       completed: isCompleted,
       repeat: repeatRule,
       voiceNoteUri: voiceNoteUri,
+      isVoice: isVoice || !!voiceNoteUri,
     });
     onBack();
   };
@@ -250,6 +254,7 @@ export const EditReminderScreen: React.FC<EditReminderScreenProps> = ({
               <SpeechInputButton
                 currentText={taskText}
                 onSpeechResult={(spokenText) => {
+                  setIsVoice(true);
                   setTaskText((prev) => (prev && prev.trim() ? `${prev.trim()} ${spokenText}` : spokenText));
                 }}
               />
@@ -280,7 +285,10 @@ export const EditReminderScreen: React.FC<EditReminderScreenProps> = ({
             <VoiceNoteRecorder
               existingUri={voiceNoteUri}
               hasVoiceNoteOnServer={!voiceNoteUri && !!reminder.hasVoiceNote}
-              onRecordingChange={setVoiceNoteUri}
+              onRecordingChange={(uri) => {
+                setVoiceNoteUri(uri);
+                if (uri) setIsVoice(true);
+              }}
             />
           </View>
         )}
